@@ -2,7 +2,9 @@ import json
 from pathlib import Path
 
 from sentinel.alerts.alert_builder import build_basic_alert
-from sentinel.parsing.entity_extractor import attach_dummy_entities
+from sentinel.config.loader import load_config
+from sentinel.database.sqlite_client import get_session
+from sentinel.parsing.entity_extractor import link_to_network
 from sentinel.parsing.normalizer import normalize_event
 from sentinel.utils.logging import get_logger
 
@@ -15,11 +17,15 @@ def main() -> None:
 
     - load a sample JSON event
     - normalize it
-    - attach dummy entities
+    - link to network data (facilities/shipments)
     - build a basic alert
     - print JSON + markdown representations
     """
-    event_path = Path("tests/fixtures/event_spill.json")
+    config = load_config()
+    
+    # Load event
+    demo_config = config.get("demo", {})
+    event_path = Path(demo_config.get("event_json", "tests/fixtures/event_spill.json"))
     if not event_path.exists():
         raise FileNotFoundError(f"Fixture not found: {event_path}")
 
@@ -27,7 +33,14 @@ def main() -> None:
     raw["event_id"] = "EVT-DEMO-0001"
 
     event = normalize_event(raw)
-    event = attach_dummy_entities(event)
+    
+    # Link to network data instead of using dummy entities
+    sqlite_path = config.get("storage", {}).get("sqlite_path", "sentinel.db")
+    session = get_session(sqlite_path)
+    try:
+        event = link_to_network(event, session)
+    finally:
+        session.close()
 
     alert = build_basic_alert(event)
 
