@@ -185,6 +185,10 @@ def update_existing_alert_row(
         row.scope_json = scope_json  # Update scope with latest event data
     
     # v0.7: Update tier/source_id/trust_tier from latest event (deterministic behavior)
+    # Note: When a correlated alert is updated by a different tier source, the alert's
+    # tier changes to reflect the latest event. This is intentional - alerts.tier
+    # represents "last updater tier" not "first creator tier". For full provenance,
+    # see root_event_ids_json which tracks all events that contributed to this alert.
     if tier is not None:
         row.tier = tier
     if source_id is not None:

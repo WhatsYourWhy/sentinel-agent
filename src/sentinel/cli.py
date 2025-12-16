@@ -75,9 +75,14 @@ def cmd_fetch(args: argparse.Namespace) -> None:
     config = load_config()
     sqlite_path = config.get("storage", {}).get("sqlite_path", "sentinel.db")
     
-    # Ensure migrations
+    # Ensure base tables exist first (creates all tables from schema)
+    from sentinel.database.sqlite_client import get_engine
+    get_engine(sqlite_path)
+    
+    # Then run migrations to add any missing columns
     ensure_raw_items_table(sqlite_path)
     ensure_event_external_fields(sqlite_path)
+    ensure_alert_correlation_columns(sqlite_path)
     ensure_trust_tier_columns(sqlite_path)  # v0.7: trust tier columns
     
     # Create fetcher

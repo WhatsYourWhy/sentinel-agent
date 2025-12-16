@@ -130,6 +130,7 @@ def generate_brief(
         "global": len([a for a in alert_dicts if a.get("tier") == "global"]),
         "regional": len([a for a in alert_dicts if a.get("tier") == "regional"]),
         "local": len([a for a in alert_dicts if a.get("tier") == "local"]),
+        "unknown": len([a for a in alert_dicts if a.get("tier") is None]),  # Handle None tier
     }
     
     return {
@@ -172,11 +173,20 @@ def render_markdown(brief_data: Dict) -> str:
         f"**Relevant (1):** {counts['relevant']} | "
         f"**Interesting (0):** {counts['interesting']}"
     )
-    lines.append(
-        f"- **Tier:** Global {tier_counts['global']} | "
-        f"Regional {tier_counts['regional']} | "
-        f"Local {tier_counts['local']}"
-    )
+    tier_summary_parts = []
+    if tier_counts['global'] > 0:
+        tier_summary_parts.append(f"Global {tier_counts['global']}")
+    if tier_counts['regional'] > 0:
+        tier_summary_parts.append(f"Regional {tier_counts['regional']}")
+    if tier_counts['local'] > 0:
+        tier_summary_parts.append(f"Local {tier_counts['local']}")
+    if tier_counts['unknown'] > 0:
+        tier_summary_parts.append(f"Unknown {tier_counts['unknown']}")
+    
+    if tier_summary_parts:
+        lines.append(f"- **Tier:** {' | '.join(tier_summary_parts)}")
+    else:
+        lines.append("- **Tier:** None")
     lines.append("")
     
     # Quiet Day - check early
@@ -198,16 +208,17 @@ def render_markdown(brief_data: Dict) -> str:
         lines.append("## Top Impact")
         lines.append("")
         
-        # Group by tier
+        # Group by tier (v0.7: include unknown tier for None values)
         top_by_tier = {
             "global": [a for a in top if a.get("tier") == "global"],
             "regional": [a for a in top if a.get("tier") == "regional"],
             "local": [a for a in top if a.get("tier") == "local"],
+            "unknown": [a for a in top if a.get("tier") is None],
         }
         
-        tier_badges = {"global": "[G]", "regional": "[R]", "local": "[L]"}
+        tier_badges = {"global": "[G]", "regional": "[R]", "local": "[L]", "unknown": "[?]"}
         
-        for tier_name in ["global", "regional", "local"]:
+        for tier_name in ["global", "regional", "local", "unknown"]:
             tier_alerts = top_by_tier[tier_name]
             if not tier_alerts:
                 continue
@@ -240,7 +251,9 @@ def render_markdown(brief_data: Dict) -> str:
                 shipments_str = f"{shipments_shown}/{shipments_total}" if shipments_total > shipments_shown else str(shipments_shown)
                 
                 badge = tier_badges.get(tier_name, "")
-                lines.append(f"- **[{alert['classification']}]{badge}** {alert['summary']}")
+                trust_tier_val = alert.get('trust_tier')
+                trust_suffix = f" (T{trust_tier_val})" if trust_tier_val else ""
+                lines.append(f"- **[{alert['classification']}]{badge}** {alert['summary']}{trust_suffix}")
                 lines.append(f"  - **Key:** {alert['correlation']['key']}")
                 if facilities or lanes or shipments_str != "0":
                     scope_parts = []
@@ -263,16 +276,17 @@ def render_markdown(brief_data: Dict) -> str:
         lines.append("## Updated Alerts")
         lines.append("")
         
-        # Group by tier
+        # Group by tier (v0.7: include unknown tier for None values)
         updated_by_tier = {
             "global": [a for a in updated if a.get("tier") == "global"],
             "regional": [a for a in updated if a.get("tier") == "regional"],
             "local": [a for a in updated if a.get("tier") == "local"],
+            "unknown": [a for a in updated if a.get("tier") is None],
         }
         
-        tier_badges = {"global": "[G]", "regional": "[R]", "local": "[L]"}
+        tier_badges = {"global": "[G]", "regional": "[R]", "local": "[L]", "unknown": "[?]"}
         
-        for tier_name in ["global", "regional", "local"]:
+        for tier_name in ["global", "regional", "local", "unknown"]:
             tier_alerts = updated_by_tier[tier_name]
             if not tier_alerts:
                 continue
@@ -292,7 +306,9 @@ def render_markdown(brief_data: Dict) -> str:
             lines.append("")
             for alert in tier_alerts:
                 badge = tier_badges.get(tier_name, "")
-                lines.append(f"- **[{alert['classification']}]{badge}** {alert['summary']} — Updates: {alert['update_count']}")
+                trust_tier_val = alert.get('trust_tier')
+                trust_suffix = f" (T{trust_tier_val})" if trust_tier_val else ""
+                lines.append(f"- **[{alert['classification']}]{badge}** {alert['summary']}{trust_suffix} — Updates: {alert['update_count']}")
             lines.append("")
     
     # New Alerts (v0.7: grouped by tier)
@@ -301,16 +317,17 @@ def render_markdown(brief_data: Dict) -> str:
         lines.append("## New Alerts")
         lines.append("")
         
-        # Group by tier
+        # Group by tier (v0.7: include unknown tier for None values)
         created_by_tier = {
             "global": [a for a in created if a.get("tier") == "global"],
             "regional": [a for a in created if a.get("tier") == "regional"],
             "local": [a for a in created if a.get("tier") == "local"],
+            "unknown": [a for a in created if a.get("tier") is None],
         }
         
-        tier_badges = {"global": "[G]", "regional": "[R]", "local": "[L]"}
+        tier_badges = {"global": "[G]", "regional": "[R]", "local": "[L]", "unknown": "[?]"}
         
-        for tier_name in ["global", "regional", "local"]:
+        for tier_name in ["global", "regional", "local", "unknown"]:
             tier_alerts = created_by_tier[tier_name]
             if not tier_alerts:
                 continue
@@ -330,7 +347,9 @@ def render_markdown(brief_data: Dict) -> str:
             lines.append("")
             for alert in tier_alerts:
                 badge = tier_badges.get(tier_name, "")
-                lines.append(f"- **[{alert['classification']}]{badge}** {alert['summary']}")
+                trust_tier_val = alert.get('trust_tier')
+                trust_suffix = f" (T{trust_tier_val})" if trust_tier_val else ""
+                lines.append(f"- **[{alert['classification']}]{badge}** {alert['summary']}{trust_suffix}")
             lines.append("")
     
     return "\n".join(lines)
