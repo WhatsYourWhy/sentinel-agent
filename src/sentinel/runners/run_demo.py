@@ -53,6 +53,16 @@ def main() -> None:
         logger.info("Linking notes:")
         for n in notes:
             logger.info(f"- {n}")
+    
+    # Print confidence and provenance
+    confidence = event.get("link_confidence", {})
+    provenance = event.get("link_provenance", {})
+    if confidence or provenance:
+        logger.info("Link confidence and provenance:")
+        if confidence:
+            logger.info(f"  Confidence: {confidence}")
+        if provenance:
+            logger.info(f"  Provenance: {provenance}")
 
 
 if __name__ == "__main__":
