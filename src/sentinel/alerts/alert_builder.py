@@ -1,3 +1,4 @@
+import json
 from typing import Dict, Optional
 
 from sqlalchemy.orm import Session
@@ -11,7 +12,13 @@ from .alert_models import (
     AlertScope,
     SentinelAlert,
 )
+from .correlation import build_correlation_key
 from .impact_scorer import calculate_network_impact_score, map_score_to_classification
+from ..database.alert_repo import (
+    find_recent_alert_by_key,
+    update_existing_alert_row,
+    upsert_new_alert_row,
+)
 
 
 def build_basic_alert(event: Dict, session: Optional[Session] = None) -> SentinelAlert:
@@ -62,6 +69,11 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
         # Fallback to severity_guess if no session provided
         classification = event.get("severity_guess", 1)
         classification_source = "severity_guess (no network data)"
+        # Initialize evidence for correlation notes even without session
+        evidence = AlertEvidence(
+            diagnostics=None,
+            linking_notes=event.get("linking_notes", []),
+        )
 
     scope = AlertScope(
         facilities=event.get("facilities", []),
@@ -87,6 +99,54 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
             due_within_hours=4,
         )
     ]
+
+    # Build correlation key and check for existing alerts
+    correlation_key = build_correlation_key(event)
+    
+    # Persist correlation-aware if session is available
+    if session is not None:
+        existing = find_recent_alert_by_key(session, correlation_key, within_days=7)
+        
+        if existing:
+            # Update existing alert
+            update_existing_alert_row(
+                session,
+                existing,
+                new_summary=summary,
+                new_classification=classification,
+                root_event_id=root_event_id,
+            )
+            session.commit()
+            
+            # Use existing alert ID and add correlation note
+            alert_id = existing.alert_id
+            if evidence:
+                evidence.linking_notes = (evidence.linking_notes or []) + [
+                    f"Correlated to existing alert_id={existing.alert_id} via key={correlation_key}"
+                ]
+        else:
+            # Create new alert
+            reasoning_text = "\n".join(reasoning) if reasoning else None
+            actions_text = json.dumps([a.model_dump() for a in recommended_actions]) if recommended_actions else None
+            
+            upsert_new_alert_row(
+                session,
+                alert_id=alert_id,
+                summary=summary,
+                risk_type=risk_type,
+                classification=classification,
+                status="OPEN",
+                reasoning=reasoning_text,
+                recommended_actions=actions_text,
+                root_event_id=root_event_id,
+                correlation_key=correlation_key,
+            )
+            session.commit()
+            
+            if evidence:
+                evidence.linking_notes = (evidence.linking_notes or []) + [
+                    f"Created new correlated alert via key={correlation_key}"
+                ]
 
     return SentinelAlert(
         alert_id=alert_id,

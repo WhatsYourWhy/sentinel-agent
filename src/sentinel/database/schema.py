@@ -1,6 +1,8 @@
 from sqlalchemy import (
     Column,
+    DateTime,
     Float,
+    Index,
     Integer,
     String,
     Text,
@@ -79,6 +81,13 @@ class Alert(Base):
     root_event_id = Column(String, nullable=False)
     reasoning = Column(Text)
     recommended_actions = Column(Text)
+    
+    # Correlation fields (v0.4)
+    correlation_key = Column(String, nullable=True, index=True)
+    first_seen_utc = Column(DateTime, nullable=True)
+    last_seen_utc = Column(DateTime, nullable=True)
+    update_count = Column(Integer, nullable=True)
+    root_event_ids_json = Column(Text, nullable=True)  # Store list as JSON string
 
 
 def create_all(engine_url: str) -> None:

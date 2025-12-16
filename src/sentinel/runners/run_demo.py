@@ -3,6 +3,7 @@ from pathlib import Path
 
 from sentinel.alerts.alert_builder import build_basic_alert
 from sentinel.config.loader import load_config
+from sentinel.database.migrate import ensure_alert_correlation_columns
 from sentinel.database.sqlite_client import get_session
 from sentinel.parsing.network_linker import link_event_to_network
 from sentinel.parsing.normalizer import normalize_event
@@ -36,22 +37,32 @@ def main() -> None:
     
     # Link to network data using new linker
     sqlite_path = config.get("storage", {}).get("sqlite_path", "sentinel.db")
+    
+    # Ensure correlation columns exist (migration)
+    ensure_alert_correlation_columns(sqlite_path)
+    
     session = get_session(sqlite_path)
     try:
         event = link_event_to_network(event, session=session)
+        
+        # Build alert with network impact scoring and correlation
+        alert = build_basic_alert(event, session=session)
     finally:
         session.close()
-
-    # Build alert with network impact scoring
-    alert = build_basic_alert(event, session=session)
 
     logger.info("Built alert:")
     print(alert.model_dump_json(indent=2))
     
-    # Print linking notes for debugging
+    # Print correlation and linking notes
+    if alert.evidence and alert.evidence.linking_notes:
+        logger.info("Linking and correlation notes:")
+        for n in alert.evidence.linking_notes:
+            logger.info(f"- {n}")
+    
+    # Also print event-level linking notes for debugging
     notes = event.get("linking_notes", [])
     if notes:
-        logger.info("Linking notes:")
+        logger.info("Event linking notes:")
         for n in notes:
             logger.info(f"- {n}")
     
