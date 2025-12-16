@@ -1,11 +1,106 @@
 """Network impact scoring for alert classification."""
 
-from datetime import datetime, timedelta
-from typing import Dict, Tuple
+from datetime import datetime, timedelta, time, timezone
+from typing import Dict, Tuple, Optional
 
 from sqlalchemy.orm import Session
 
 from ..database.schema import Facility, Lane, Shipment
+
+
+def parse_eta_date_safely(eta_date_str: Optional[str]) -> Optional[datetime]:
+    """
+    Safely parse an ETA date string into a datetime object.
+    
+    Handles:
+    - Date-only strings (YYYY-MM-DD) - treated as end-of-day UTC
+    - Datetime strings (YYYY-MM-DD HH:MM:SS) - parsed as-is
+    - Invalid/missing dates - returns None
+    
+    Args:
+        eta_date_str: Date string to parse, or None
+        
+    Returns:
+        datetime object in UTC, or None if parsing fails
+    """
+    if not eta_date_str:
+        return None
+    
+    # Handle non-string types gracefully
+    if not isinstance(eta_date_str, str):
+        return None
+    
+    eta_date_str = eta_date_str.strip()
+    if not eta_date_str:
+        return None
+    
+    try:
+        # Try parsing as date-only (YYYY-MM-DD)
+        if len(eta_date_str) == 10 and eta_date_str.count('-') == 2:
+            date_obj = datetime.strptime(eta_date_str, "%Y-%m-%d").date()
+            # Treat date-only as end-of-day UTC for consistency
+            # Use 23:59:59 to represent end of day
+            return datetime.combine(date_obj, time(23, 59, 59), tzinfo=timezone.utc)
+        
+        # Try parsing as datetime (YYYY-MM-DD HH:MM:SS or variants)
+        # Common formats
+        formats = [
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%d %H:%M:%S%z",
+            "%Y-%m-%dT%H:%M:%S%z",
+        ]
+        
+        for fmt in formats:
+            try:
+                dt = datetime.strptime(eta_date_str, fmt)
+                # If no timezone info, assume UTC
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except ValueError:
+                continue
+        
+        # If all parsing attempts fail, return None
+        return None
+        
+    except (ValueError, AttributeError, TypeError) as e:
+        # Log the error but don't crash - just skip this date
+        # In production, you might want to log this for monitoring
+        return None
+
+
+def is_eta_within_48h(eta_date_str: Optional[str], now: Optional[datetime] = None) -> bool:
+    """
+    Check if an ETA date is within 48 hours from now.
+    
+    Args:
+        eta_date_str: ETA date string to check
+        now: Current datetime (defaults to now in UTC). Used for testing.
+        
+    Returns:
+        True if ETA is within 48 hours, False otherwise (or if parsing fails)
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    elif now.tzinfo is None:
+        # If now is naive, assume UTC
+        now = now.replace(tzinfo=timezone.utc)
+    
+    eta_dt = parse_eta_date_safely(eta_date_str)
+    if eta_dt is None:
+        return False
+    
+    # Ensure both datetimes are timezone-aware
+    if eta_dt.tzinfo is None:
+        eta_dt = eta_dt.replace(tzinfo=timezone.utc)
+    
+    # Calculate time difference
+    time_diff = eta_dt - now
+    
+    # Check if within 48 hours (and not in the past)
+    return timedelta(0) <= time_diff <= timedelta(hours=48)
 
 
 def calculate_network_impact_score(event: Dict, session: Session) -> Tuple[int, list[str]]:
@@ -71,17 +166,11 @@ def calculate_network_impact_score(event: Dict, session: Session) -> Tuple[int, 
                 breakdown.append(f"+1: >=5 priority shipments ({priority_count})")
             
             # Check for near-term ETA (within 48h)
-            today = datetime.now().date()
-            cutoff = today + timedelta(days=2)
+            # Use robust parsing that handles timezone drift and bad dates
             near_term_count = 0
             for shipment in priority_shipments:
-                if shipment.eta_date:
-                    try:
-                        eta = datetime.strptime(shipment.eta_date, "%Y-%m-%d").date()
-                        if today <= eta <= cutoff:
-                            near_term_count += 1
-                    except (ValueError, AttributeError):
-                        pass
+                if is_eta_within_48h(shipment.eta_date):
+                    near_term_count += 1
             
             if near_term_count > 0:
                 score += 1
