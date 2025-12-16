@@ -6,6 +6,7 @@ from ..utils.id_generator import new_alert_id
 from .alert_models import (
     AlertAction,
     AlertDiagnostics,
+    AlertEvidence,
     AlertImpactAssessment,
     AlertScope,
     SentinelAlert,
@@ -20,8 +21,11 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
     Classification is determined by network impact score, not just input severity_guess.
     This makes classification deterministic and testable.
     
-    Note: The alert model includes a deprecated `priority` field that mirrors `classification`
-    for backward compatibility. New code should use `classification`.
+    Note: The alert model includes deprecated fields for backward compatibility:
+    - `priority` mirrors `classification` (will be removed in v0.4)
+    - `diagnostics` mirrors `evidence.diagnostics` (will be removed in v0.4)
+    
+    New code should use `classification` and `evidence.diagnostics`.
 
     Args:
         event: Event dict with facilities, lanes, shipments populated
@@ -35,13 +39,13 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
     risk_type = event.get("event_type", "GENERAL")
     
     # Calculate classification based on network impact
-    diagnostics = None
+    evidence = None
     if session:
         impact_score, breakdown = calculate_network_impact_score(event, session)
         classification = map_score_to_classification(impact_score)
         classification_source = f"network_impact_score={impact_score}"
         
-        # Build diagnostics object
+        # Build evidence object (non-decisional)
         diagnostics = AlertDiagnostics(
             link_confidence=event.get("link_confidence", {}),
             link_provenance=event.get("link_provenance", {}),
@@ -49,6 +53,10 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
             shipments_truncated=event.get("shipments_truncated", False),
             impact_score=impact_score,
             impact_score_breakdown=breakdown,
+        )
+        evidence = AlertEvidence(
+            diagnostics=diagnostics,
+            linking_notes=event.get("linking_notes", []),
         )
     else:
         # Fallback to severity_guess if no session provided
@@ -91,7 +99,6 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
         impact_assessment=impact_assessment,
         reasoning=reasoning,
         recommended_actions=recommended_actions,
-        confidence_score=0.5,
-        diagnostics=diagnostics,
+        evidence=evidence,
     )
 

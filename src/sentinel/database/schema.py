@@ -73,7 +73,8 @@ class Alert(Base):
     alert_id = Column(String, primary_key=True)
     summary = Column(Text, nullable=False)
     risk_type = Column(String, nullable=False)
-    priority = Column(Integer, nullable=False)
+    classification = Column(Integer, nullable=False)  # Canonical field (0=Interesting, 1=Relevant, 2=Impactful)
+    priority = Column(Integer, nullable=True)  # DEPRECATED: Use classification. Will be removed in v0.4.
     status = Column(String, nullable=False)
     root_event_id = Column(String, nullable=False)
     reasoning = Column(Text)

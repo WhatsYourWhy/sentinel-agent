@@ -24,7 +24,11 @@ class AlertImpactAssessment(BaseModel):
 
 
 class AlertDiagnostics(BaseModel):
-    """Diagnostic information for alert audit and debugging."""
+    """Diagnostic information for alert audit and debugging.
+    
+    This is non-decisional evidence - it explains how the system arrived at
+    its decisions but does not itself constitute a decision.
+    """
     link_confidence: dict[str, float] = {}
     link_provenance: dict[str, str] = {}
     shipments_total_linked: int = 0
@@ -33,7 +37,30 @@ class AlertDiagnostics(BaseModel):
     impact_score_breakdown: list[str] = []
 
 
+class AlertEvidence(BaseModel):
+    """Non-decisional evidence that supports alert decisions.
+    
+    This contains what the system believes (diagnostics, linking notes, etc.)
+    but is separate from what the system asserts (classification, summary, scope).
+    
+    When LLM reasoning is added later, it will go here as evidence, not as decisions.
+    """
+    diagnostics: Optional[AlertDiagnostics] = None
+    linking_notes: list[str] = []  # Future: notes from entity linking process
+
+
 class SentinelAlert(BaseModel):
+    """Structured risk alert with clear decision/evidence boundary.
+    
+    Decisions (what system asserts):
+    - classification: Risk tier (0=Interesting, 1=Relevant, 2=Impactful)
+    - summary: Alert summary
+    - scope: Affected entities
+    - recommended_actions: What to do
+    
+    Evidence (what system believes, but doesn't decide):
+    - evidence: Non-decisional support data (diagnostics, linking notes, etc.)
+    """
     alert_id: str
     risk_type: str
     classification: int  # 0=Interesting, 1=Relevant, 2=Impactful (canonical field)
@@ -42,14 +69,14 @@ class SentinelAlert(BaseModel):
     root_event_id: str
     scope: AlertScope
     impact_assessment: AlertImpactAssessment
-    reasoning: list[str]
+    reasoning: list[str]  # System's explanation (decision artifact)
     recommended_actions: List[AlertAction]
     model_version: str = "sentinel-v1"
     confidence_score: Optional[float] = None
-    diagnostics: Optional[AlertDiagnostics] = None
+    evidence: Optional[AlertEvidence] = None  # Non-decisional evidence
     
     # Backward compatibility: priority mirrors classification
-    # DEPRECATED: Use classification instead. This field will be removed in a future version.
+    # DEPRECATED: Use classification instead. This field will be removed in v0.4.
     @computed_field
     @property
     def priority(self) -> int:
@@ -57,7 +84,22 @@ class SentinelAlert(BaseModel):
         Deprecated: Use classification instead.
         
         Returns classification value for backward compatibility.
-        This field mirrors classification and will be removed in a future version.
+        This field mirrors classification and will be removed in v0.4.
         """
         return self.classification
+    
+    # Backward compatibility: diagnostics mirrors evidence.diagnostics
+    # DEPRECATED: Use evidence.diagnostics instead. This field will be removed in v0.4.
+    @computed_field
+    @property
+    def diagnostics(self) -> Optional[AlertDiagnostics]:
+        """
+        Deprecated: Use evidence.diagnostics instead.
+        
+        Returns evidence.diagnostics for backward compatibility.
+        This field will be removed in v0.4.
+        """
+        if self.evidence and self.evidence.diagnostics:
+            return self.evidence.diagnostics
+        return None
 

@@ -64,16 +64,18 @@ Event Input → Normalization → Entity Linking → Alert Generation → Output
 
 **Purpose:** Generate structured risk alerts from events.
 
-- **`alert_models.py`**: Pydantic models for `SentinelAlert`, `AlertScope`, `AlertImpactAssessment`
+- **`alert_models.py`**: Pydantic models for `SentinelAlert`, `AlertScope`, `AlertImpactAssessment`, `AlertEvidence`
 - **`alert_builder.py`**: Heuristic-based alert generation (v1)
-  - Maps event severity to alert priority
+  - Maps network impact score to alert classification (0=Interesting, 1=Relevant, 2=Impactful)
   - Populates scope from linked entities
   - Generates recommended actions
+  - Separates decisions (classification, summary, scope) from evidence (diagnostics, linking notes)
 
 **Key Design:**
 - Structured output (JSON-serializable)
-- Extensible for future LLM-based reasoning
-- Clear separation between data models and business logic
+- Clear decision/evidence boundary (decisions vs. what system believes)
+- Extensible for future LLM-based reasoning (LLM output goes in evidence, not decisions)
+- Deterministic classification based on network impact scoring
 
 ### 5. Runners (`sentinel/runners/`)
 

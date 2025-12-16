@@ -61,8 +61,9 @@ Sentinel v1 is a **local-first, domain-agnostic event → risk → alert engine*
 {
     "alert_id": str,
     "risk_type": str,
-    "priority": int,          # 1-5
-    "status": str,            # "OPEN", "CLOSED", etc.
+    "classification": int,      # 0=Interesting, 1=Relevant, 2=Impactful (canonical)
+    "priority": int,            # DEPRECATED: Use classification. Mirrors classification for backward compatibility. Will be removed in v0.4.
+    "status": str,             # "OPEN", "CLOSED", etc.
     "summary": str,
     "root_event_id": str,
     "scope": {
@@ -86,7 +87,19 @@ Sentinel v1 is a **local-first, domain-agnostic event → risk → alert engine*
         }
     ],
     "model_version": str,
-    "confidence_score": float | None
+    "confidence_score": float | None,
+    "evidence": {              # Non-decisional evidence (what system believes)
+        "diagnostics": {
+            "link_confidence": dict[str, float],
+            "link_provenance": dict[str, str],
+            "shipments_total_linked": int,
+            "shipments_truncated": bool,
+            "impact_score": int,
+            "impact_score_breakdown": list[str]
+        },
+        "linking_notes": [str]
+    },
+    "diagnostics": {...}        # DEPRECATED: Use evidence.diagnostics. Will be removed in v0.4.
 }
 ```
 
