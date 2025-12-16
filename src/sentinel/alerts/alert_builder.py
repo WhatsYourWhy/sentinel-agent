@@ -17,8 +17,11 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
     """
     Build a minimal alert for a single event.
     
-    Priority is determined by network impact score, not just input severity_guess.
+    Classification is determined by network impact score, not just input severity_guess.
     This makes classification deterministic and testable.
+    
+    Note: The alert model includes a deprecated `priority` field that mirrors `classification`
+    for backward compatibility. New code should use `classification`.
 
     Args:
         event: Event dict with facilities, lanes, shipments populated

@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 
 class AlertAction(BaseModel):
@@ -36,7 +36,7 @@ class AlertDiagnostics(BaseModel):
 class SentinelAlert(BaseModel):
     alert_id: str
     risk_type: str
-    classification: int  # 0=Interesting, 1=Relevant, 2=Impactful
+    classification: int  # 0=Interesting, 1=Relevant, 2=Impactful (canonical field)
     status: str
     summary: str
     root_event_id: str
@@ -47,4 +47,17 @@ class SentinelAlert(BaseModel):
     model_version: str = "sentinel-v1"
     confidence_score: Optional[float] = None
     diagnostics: Optional[AlertDiagnostics] = None
+    
+    # Backward compatibility: priority mirrors classification
+    # DEPRECATED: Use classification instead. This field will be removed in a future version.
+    @computed_field
+    @property
+    def priority(self) -> int:
+        """
+        Deprecated: Use classification instead.
+        
+        Returns classification value for backward compatibility.
+        This field mirrors classification and will be removed in a future version.
+        """
+        return self.classification
 
