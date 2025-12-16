@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Dict, Optional, Tuple
 
 from sqlalchemy import or_
@@ -135,19 +136,52 @@ def link_event_to_network(event: Dict, session: Session, max_shipments: int = 50
 
         # 3) If lanes found, link shipments
         if lane_ids:
-            shipments = (
+            # Get all shipments (don't limit yet - we need to sort first)
+            all_shipments = (
                 session.query(Shipment)
                 .filter(Shipment.lane_id.in_(lane_ids))
-                .limit(max_shipments)
                 .all()
             )
-            shipment_ids = [s.shipment_id for s in shipments]
-            if shipment_ids:
-                event["shipments"] = sorted(set(event["shipments"] + shipment_ids))
+            
+            if all_shipments:
+                # Sort by priority_flag (descending: 1 before 0), then by eta_date (ascending: earliest first)
+                def sort_key(shipment: Shipment) -> Tuple[int, str]:
+                    # Priority: 1 (high) comes before 0 (low), so negate it
+                    priority = -(shipment.priority_flag or 0)
+                    # ETA date: use a far future date if missing, so missing dates sort last
+                    eta = shipment.eta_date or "9999-12-31"
+                    return (priority, eta)
+                
+                sorted_shipments = sorted(all_shipments, key=sort_key)
+                
+                # Track total before truncation
+                total_linked = len(sorted_shipments)
+                
+                # Take top N
+                top_shipments = sorted_shipments[:max_shipments]
+                shipment_ids = [s.shipment_id for s in top_shipments]
+                
+                # Deduplicate and add to existing (preserve sort order)
+                existing_shipments = set(event.get("shipments", []))
+                new_shipment_ids = [sid for sid in shipment_ids if sid not in existing_shipments]
+                # Preserve the sorted order (don't re-sort alphabetically)
+                event["shipments"] = list(event.get("shipments", [])) + new_shipment_ids
+                
+                # Add truncation metadata if needed
+                if total_linked > max_shipments:
+                    event["shipments_truncated"] = True
+                    event["shipments_total_linked"] = total_linked
+                else:
+                    event["shipments_truncated"] = False
+                    event["shipments_total_linked"] = total_linked
+                
                 # Shipment confidence is 0.60 (lower confidence for indirect relationship)
                 event["link_confidence"]["shipments"] = 0.60
                 event["link_provenance"]["shipments"] = "LANE_RELATION"
-                event["linking_notes"].append(f"Linked shipments via lanes: {shipment_ids}")
+                event["linking_notes"].append(
+                    f"Linked shipments via lanes: {len(event['shipments'])} shipments"
+                    + (f" (truncated from {total_linked})" if total_linked > max_shipments else "")
+                )
 
     return event
 

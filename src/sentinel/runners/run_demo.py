@@ -63,6 +63,10 @@ def main() -> None:
             logger.info(f"  Confidence: {confidence}")
         if provenance:
             logger.info(f"  Provenance: {provenance}")
+    
+    # Print truncation metadata if present
+    if event.get("shipments_truncated"):
+        logger.info(f"Shipments truncated: {len(event.get('shipments', []))} shown of {event.get('shipments_total_linked', 0)} total")
 
 
 if __name__ == "__main__":
