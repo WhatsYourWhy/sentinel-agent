@@ -4,7 +4,7 @@ from pathlib import Path
 from sentinel.alerts.alert_builder import build_basic_alert
 from sentinel.config.loader import load_config
 from sentinel.database.migrate import ensure_alert_correlation_columns
-from sentinel.database.sqlite_client import get_session
+from sentinel.database.sqlite_client import session_context
 from sentinel.parsing.network_linker import link_event_to_network
 from sentinel.parsing.normalizer import normalize_event
 from sentinel.utils.logging import get_logger
@@ -41,14 +41,13 @@ def main() -> None:
     # Ensure correlation columns exist (migration)
     ensure_alert_correlation_columns(sqlite_path)
     
-    session = get_session(sqlite_path)
-    try:
+    # Use context manager for proper session lifecycle
+    with session_context(sqlite_path) as session:
         event = link_event_to_network(event, session=session)
         
         # Build alert with network impact scoring and correlation
+        # Note: alert_builder handles its own commits
         alert = build_basic_alert(event, session=session)
-    finally:
-        session.close()
 
     logger.info("Built alert:")
     print(alert.model_dump_json(indent=2))

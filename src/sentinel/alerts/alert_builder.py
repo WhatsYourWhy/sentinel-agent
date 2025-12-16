@@ -118,9 +118,14 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
             )
             session.commit()
             
-            # Use existing alert ID and add correlation note
+            # Use existing alert ID and add structured correlation info
             alert_id = existing.alert_id
             if evidence:
+                evidence.correlation = {
+                    "key": correlation_key,
+                    "action": "UPDATED",
+                    "alert_id": existing.alert_id,
+                }
                 evidence.linking_notes = (evidence.linking_notes or []) + [
                     f"Correlated to existing alert_id={existing.alert_id} via key={correlation_key}"
                 ]
@@ -144,6 +149,11 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
             session.commit()
             
             if evidence:
+                evidence.correlation = {
+                    "key": correlation_key,
+                    "action": "CREATED",
+                    "alert_id": alert_id,
+                }
                 evidence.linking_notes = (evidence.linking_notes or []) + [
                     f"Created new correlated alert via key={correlation_key}"
                 ]

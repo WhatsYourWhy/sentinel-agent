@@ -46,7 +46,9 @@ class AlertEvidence(BaseModel):
     When LLM reasoning is added later, it will go here as evidence, not as decisions.
     """
     diagnostics: Optional[AlertDiagnostics] = None
-    linking_notes: list[str] = []  # Future: notes from entity linking process
+    linking_notes: list[str] = []  # Human-readable notes from entity linking process
+    correlation: Optional[dict[str, str | int]] = None  # Structured correlation info
+    # Format: {"key": str, "action": "CREATED" | "UPDATED", "alert_id": str}
 
 
 class SentinelAlert(BaseModel):

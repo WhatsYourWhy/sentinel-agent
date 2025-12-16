@@ -17,6 +17,8 @@ def find_recent_alert_by_key(
     """
     Find the most recent alert with the given correlation key within the specified days.
     
+    Uses ISO 8601 string comparison for reliable date filtering (SQLite stores as TEXT).
+    
     Args:
         session: SQLAlchemy session
         correlation_key: Correlation key to search for
@@ -26,34 +28,28 @@ def find_recent_alert_by_key(
         Most recent Alert with matching key, or None if not found
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=within_days)
+    cutoff_iso = cutoff.isoformat()  # ISO 8601 string for lexicographic comparison
 
     q = session.query(Alert).filter(Alert.correlation_key == correlation_key)
 
-    # Filter by last_seen_utc if it's set
-    # SQLite stores datetime as TEXT, so we compare as strings or convert
-    # For simplicity, we'll get all matches and filter in Python if needed
+    # Get all alerts with matching key, ordered by last_seen_utc
     alerts = q.order_by(Alert.last_seen_utc.desc().nullslast()).all()
     
-    # Filter by date if last_seen_utc is set
+    # Filter by date using ISO string comparison (works because ISO 8601 is lexicographically sortable)
     for alert in alerts:
         if alert.last_seen_utc:
-            # Handle both datetime objects and string representations
-            if isinstance(alert.last_seen_utc, str):
-                try:
-                    alert_dt = datetime.fromisoformat(alert.last_seen_utc.replace('Z', '+00:00'))
-                except (ValueError, AttributeError):
-                    continue
+            # Convert to ISO string if it's a datetime object (shouldn't happen, but be safe)
+            if isinstance(alert.last_seen_utc, datetime):
+                alert_iso = alert.last_seen_utc.isoformat()
             else:
-                alert_dt = alert.last_seen_utc
-                # Ensure timezone-aware
-                if alert_dt.tzinfo is None:
-                    alert_dt = alert_dt.replace(tzinfo=timezone.utc)
+                alert_iso = str(alert.last_seen_utc)
             
-            if alert_dt >= cutoff:
+            # Lexicographic comparison works for ISO 8601 strings
+            if alert_iso >= cutoff_iso:
                 return alert
     
-    # If no alerts with valid dates, return first one (might be old but better than nothing)
-    return alerts[0] if alerts else None
+    # If no alerts with valid dates within window, return None (don't return old alerts)
+    return None
 
 
 def load_root_event_ids(alert_row: Alert) -> list[str]:
@@ -103,6 +99,7 @@ def upsert_new_alert_row(
         Created Alert row
     """
     now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()  # Store as ISO 8601 string for consistency
 
     row = Alert(
         alert_id=alert_id,
@@ -114,8 +111,8 @@ def upsert_new_alert_row(
         reasoning=reasoning,
         recommended_actions=recommended_actions,
         correlation_key=correlation_key,
-        first_seen_utc=now,
-        last_seen_utc=now,
+        first_seen_utc=now_iso,  # ISO string for consistent storage
+        last_seen_utc=now_iso,   # ISO string for consistent storage
         update_count=0,
     )
     save_root_event_ids(row, [root_event_id])
@@ -145,11 +142,12 @@ def update_existing_alert_row(
         Updated Alert row
     """
     now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()  # Store as ISO 8601 string for consistency
 
     row.summary = new_summary
     row.classification = max(row.classification or 0, new_classification)
     row.status = "UPDATED"
-    row.last_seen_utc = now
+    row.last_seen_utc = now_iso  # ISO string for consistent storage
     row.update_count = (row.update_count or 0) + 1
 
     ids = load_root_event_ids(row)
