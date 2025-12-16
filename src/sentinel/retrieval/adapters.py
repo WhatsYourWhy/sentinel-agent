@@ -129,6 +129,13 @@ class RSSAdapter(SourceAdapter):
 class NWSAlertsAdapter(SourceAdapter):
     """Adapter for NWS Alerts API (JSON format)."""
     
+    def _get_headers(self) -> Dict[str, str]:
+        """Get HTTP headers for NWS requests (requires User-Agent and Accept)."""
+        return {
+            "User-Agent": self.user_agent,
+            "Accept": "application/geo+json",  # NWS prefers geo+json
+        }
+    
     def fetch(self, since_hours: Optional[int] = None) -> List[RawItemCandidate]:
         """Fetch items from NWS Alerts API."""
         try:

@@ -300,7 +300,8 @@ def cmd_doctor(args: argparse.Namespace) -> None:
                     print(f"  [X] Schema drift detected:")
                     for col in missing_columns:
                         print(f"      - Missing: {col}")
-                    print(f"  [INFO] Run migrations or delete {sqlite_path} and re-run")
+                    print(f"  [INFO] Recommended fix: Delete {sqlite_path} and re-run `sentinel run --since 24h`")
+                    print(f"        (Migrations are additive, but fresh DB ensures clean schema)")
                 else:
                     print("  [OK] Schema is up to date")
             finally:
@@ -373,25 +374,28 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     
     # Check 3: Network connectivity (basic)
     print("\n[3] Network Connectivity...")
-    test_urls = [
-        ("NWS API", "https://api.weather.gov/alerts/active"),
-        ("Google DNS", "https://8.8.8.8"),  # Simple connectivity test
-    ]
     
-    network_ok = False
-    for name, url in test_urls:
-        try:
-            response = requests.get(url, timeout=5)
-            if response.status_code < 500:
-                print(f"  [OK] {name}: Reachable")
-                network_ok = True
-                break
-        except requests.RequestException:
-            continue
-    
-    if not network_ok:
+    # Test NWS API with proper headers
+    try:
+        sources_config = load_sources_config()
+        defaults = sources_config.get("defaults", {})
+        user_agent = defaults.get("user_agent", "sentinel-agent/0.6")
+        headers = {
+            "User-Agent": user_agent,
+            "Accept": "application/geo+json",
+        }
+        response = requests.get("https://api.weather.gov/alerts/active", headers=headers, timeout=5)
+        if response.status_code == 200:
+            print(f"  [OK] NWS API: Reachable (status {response.status_code})")
+        elif response.status_code == 403:
+            print(f"  [WARN] NWS API: Forbidden (status {response.status_code}) - check User-Agent header")
+            warnings.append("NWS API returned 403 - verify User-Agent is set correctly")
+        else:
+            print(f"  [WARN] NWS API: Status {response.status_code}")
+            warnings.append(f"NWS API returned status {response.status_code}")
+    except requests.RequestException as e:
         warnings.append("Network connectivity test failed (may affect fetching)")
-        print("  [WARN] Network connectivity test failed")
+        print(f"  [WARN] NWS API: Connection failed - {e}")
     
     # Summary
     print("\n" + "=" * 50)

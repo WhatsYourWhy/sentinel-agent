@@ -3,7 +3,7 @@ defaults:
   enabled: true
   max_items_per_fetch: 50
   timeout_seconds: 20
-  user_agent: "sentinel-agent/0.6 (+https://github.com/WhatsYourWhy/sentinel-agent)"
+  user_agent: "sentinel-agent/0.6.1 (WhatsYourWhy; contact: you@example.com)"
   rate_limit:
     per_host_min_seconds: 2
     jitter_seconds: 1
@@ -21,28 +21,35 @@ tiers:
       geo:
         country: "US"
 
+    - id: fda_food_safety_recalls
+      type: rss
+      enabled: true
+      tier: global
+      url: "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/food-safety-recalls/rss.xml"
+      tags: ["recall", "food-safety", "supply-disruption"]
+      geo:
+        country: "US"
+
+    - id: fda_all_recalls
+      type: rss
+      enabled: true
+      tier: global
+      url: "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/recalls/rss.xml"
+      tags: ["recall", "supply-disruption"]
+      geo:
+        country: "US"
+
     - id: fema_ipaws_all_hazards
       type: rss
       enabled: false
       tier: global
-      url: "https://www.fema.gov/rss/feeds/disasters.xml"
+      url: "REQUIRES_CREDENTIALS"
       tags: ["disaster", "public-alerts"]
       geo:
         country: "US"
-      # Note: FEMA RSS feeds may require registration. Disabled by default.
+      # Note: IPAWS All-Hazards Information Feed requires access/credentials.
+      # Not public/no-login. Disabled until credentials are available.
       # Official source: https://www.fema.gov/emergency-managers/practitioners/integrated-public-alert-warning-system/technology-developers/all-hazards-information-feed
-
-    - id: fda_recalls
-      type: rss
-      enabled: false
-      tier: global
-      url: "https://www.fda.gov/AboutFDA/ContactFDA/Subscribe/feeds/recalls.xml"
-      tags: ["recall", "food-safety", "supply-disruption"]
-      geo:
-        country: "US"
-      # Note: FDA RSS feed URL needs to be verified from official subscribe page
-      # Official source: https://www.fda.gov/about-fda/contact-fda/subscribe-podcasts-and-news-feeds
-      # Disabled until correct URL is confirmed
 
   regional:
     - id: nws_active_in
@@ -65,14 +72,25 @@ tiers:
         country: "US"
         state: "IL"
 
+    - id: uscg_lnm_district_1
+      type: rss
+      enabled: true
+      tier: regional
+      url: "https://public.govdelivery.com/topics/USDHSCG_65/feed.rss"
+      tags: ["port", "maritime", "uscg"]
+      geo:
+        country: "US"
+      # USCG Local Notices to Mariners (District 1) via GovDelivery RSS
+      # Official source: https://www.navcen.uscg.gov/subscribe-email-rss-feeds
+
   local:
     - id: navcen_news_notices
       type: rss
-      enabled: true
+      enabled: false
       tier: local
       url: "https://www.navcen.uscg.gov/?pageName=newsRSS"
       tags: ["port", "maritime", "uscg"]
       geo:
         country: "US"
-      # Official source: https://www.navcen.uscg.gov/subscribe-email-rss-feeds
+      # Note: NAVCEN direct RSS may not work. Use GovDelivery feeds instead (see uscg_lnm_district_1 above).
 
