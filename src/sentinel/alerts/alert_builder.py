@@ -109,10 +109,13 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
         )
     ]
 
-    # Correlation: Build key and check for existing alerts
-    # Note: Correlation requires database session (correlation is a persistence feature)
+    # Correlation: Build key (always - it's a property of the event)
+    correlation_key = build_correlation_key(event)
+    
+    # Correlation persistence: only when session is available
+    # Note: Correlation key is always computed for debugging/replay,
+    # but persistence and deduplication require database session
     if session is not None:
-        correlation_key = build_correlation_key(event)
         existing = find_recent_alert_by_key(session, correlation_key, within_days=7)
         
         if existing:
@@ -171,7 +174,14 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Sentine
                 evidence.linking_notes = (evidence.linking_notes or []) + [
                     f"Created new correlated alert via key={correlation_key}"
                 ]
-    # If no session, correlation doesn't happen (alert is still generated)
+    else:
+        # No session: still include key in evidence for debugging/replay
+        if evidence:
+            evidence.correlation = {
+                "key": correlation_key,
+                "action": None,  # Not persisted
+                "alert_id": None,
+            }
 
     return SentinelAlert(
         alert_id=alert_id,

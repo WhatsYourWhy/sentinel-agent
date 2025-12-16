@@ -47,8 +47,9 @@ class AlertEvidence(BaseModel):
     """
     diagnostics: Optional[AlertDiagnostics] = None
     linking_notes: list[str] = []  # Human-readable notes from entity linking process
-    correlation: Optional[dict[str, str | int]] = None  # Structured correlation info
-    # Format: {"key": str, "action": "CREATED" | "UPDATED", "alert_id": str}
+    correlation: Optional[dict[str, str | int | None]] = None  # Structured correlation info
+    # Format: {"key": str, "action": "CREATED" | "UPDATED" | None, "alert_id": str | None}
+    # When session is None, action and alert_id are None (key is always computed)
 
 
 class SentinelAlert(BaseModel):
