@@ -1,5 +1,131 @@
 # Changelog
 
+## [0.8.0] - 2024-XX-XX
+
+### Added
+- Suppression system for filtering noisy events
+  - Global suppression rules in `config/suppression.yaml`
+  - Per-source suppression rules in `config/sources.yaml`
+  - Keyword, regex, and exact match patterns
+  - Field-specific matching (title, summary, raw_text, url, event_type, source_id, tier, any)
+  - Case-sensitive and case-insensitive matching
+- Suppression metadata storage
+  - `raw_items.suppression_status`, `suppression_primary_rule_id`, `suppression_rule_ids_json`, `suppressed_at_utc`, `suppression_stage`
+  - `events.suppression_primary_rule_id`, `suppression_rule_ids_json`, `suppressed_at_utc`
+- Suppression reporting in daily brief
+  - Suppressed count with top rules and sources
+  - Markdown and JSON output formats
+- CLI flags for suppression control
+  - `--no-suppress`: Bypass suppression rules (for debugging)
+  - `--explain-suppress`: Log suppression decisions
+- Doctor command enhancements
+  - Suppression config validation
+  - Duplicate rule ID detection
+  - Suppressed item counts
+
+### Changed
+- Suppressed items skip alert creation but create events for audit trail
+- `get_raw_items_for_ingest()` filters out suppressed items by default
+- Suppression evaluation occurs after normalization, before alert building
+
+### Technical
+- Database schema: Added suppression columns to `raw_items` and `events` tables
+- Migration: `ensure_suppression_columns()` function
+- Suppression engine: Deterministic rule evaluation with precedence (global rules first, then per-source)
+- All suppression metadata stored for full auditability
+
+## [0.7.0] - 2024-XX-XX
+
+### Added
+- Source trust tier system (1-3 scale)
+  - Trust tier 3: +1 impact score modifier
+  - Trust tier 1: -1 impact score modifier
+  - Trust tier 2: No modifier (default)
+- Classification floor enforcement
+  - Per-source minimum classification level
+  - Prevents downgrading alerts below floor
+  - Reasoning includes "Classification floor" note
+- Weighting bias configuration
+  - Per-source bias (-2 to +2) applied to impact score
+  - Allows fine-tuning of source priority
+- Tier-aware briefing
+  - Tier counts in header (Global: X | Regional: Y | Local: Z)
+  - Tier badges per alert (`[G]`, `[R]`, `[L]`)
+  - Trust tier indicators `(T3)`, `(T2)`, `(T1)`
+  - Grouping by tier within sections
+  - Tier and trust_tier in JSON output
+- Database columns for tier tracking
+  - `raw_items.trust_tier`, `events.trust_tier`, `alerts.trust_tier`
+  - `alerts.tier`, `alerts.source_id` (for brief efficiency)
+
+### Changed
+- Impact scoring now includes trust tier bonus and weighting bias
+- Impact score capped at 0-10 after all modifiers
+- Classification enforced after scoring (max of computed and floor)
+- Alert tier reflects "last updater" tier during correlation
+- Brief output shows tier-aware grouping and counts
+
+### Technical
+- Database schema: Added trust_tier, tier, source_id columns
+- Migration: `ensure_trust_tier_columns()` function
+- Config: `trust_tier`, `classification_floor`, `weighting_bias` in `sources.yaml`
+- Impact scorer: Detailed breakdown includes trust tier and bias lines
+- Alert builder: Extracts tier/trust from event (not config) for consistency
+
+## [0.6.0] - 2024-XX-XX
+
+### Added
+- External source retrieval system
+  - RSS/Atom feed adapter
+  - NWS Alerts API adapter (CAP/Atom format)
+  - FEMA/IPAWS adapter (disabled by default)
+  - Source configuration in `config/sources.yaml`
+- Source tiers (Global, Regional, Local)
+  - Tier classification for sources
+  - Used for tier-aware processing and briefing
+- Raw items storage
+  - `raw_items` table for fetched items before normalization
+  - Deduplication based on `canonical_id` and `content_hash`
+  - Status tracking (NEW, NORMALIZED, FAILED)
+- Rate limiting and error handling
+  - Per-host rate limiting with jitter
+  - Exponential backoff for retries
+  - Graceful handling of 404s and network errors
+- New CLI commands
+  - `sentinel sources list`: List configured sources
+  - `sentinel fetch`: Fetch items from external sources
+  - `sentinel ingest-external`: Normalize and ingest raw items
+  - `sentinel run`: Convenience command (fetch + ingest)
+  - `sentinel doctor`: Health checks for schema and config
+- Event persistence for external events
+  - External events stored in `events` table
+  - Source metadata in `evidence.source` field
+  - URL, source_id, tier, published_at tracking
+- Time-based filtering
+  - `--since` flag for fetch and ingest commands
+  - Filters by `fetched_at_utc` and `published_at_utc`
+
+### Changed
+- Event normalization extended for external sources
+  - `normalize_external_event()` function
+  - Handles RSS, NWS, and other source types
+  - Preserves source metadata in event dict
+- Alert evidence includes source metadata
+  - `evidence.source` field with source_id, tier, url, etc.
+  - Source metadata separated from correlation data
+- Database migrations enhanced
+  - `ensure_raw_items_table()` migration
+  - `ensure_event_external_fields()` migration
+  - Base table creation before migrations
+
+### Technical
+- Database schema: Added `RawItem` model and external fields to `Event` model
+- Repository: `raw_item_repo.py` for raw item persistence
+- Repository: `event_repo.py` for event persistence
+- Adapters: Pluggable adapter system for different source types
+- Fetcher: Rate-limited HTTP client with retry logic
+- Normalizer: Extended to handle external source formats
+
 ## [0.5.1] - 2024-XX-XX
 
 ### Fixed
