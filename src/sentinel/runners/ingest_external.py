@@ -134,6 +134,9 @@ def main(
         source_error_msg = None
         ingest_status = "SUCCESS"
         
+        # Contract: One INGEST SourceRun per source_id per run_group_id, regardless of item failures.
+        # Batch exceptions recorded as FAILURE status. Item-level exceptions increment source_errors
+        # but don't change batch status unless all items fail or batch-level exception occurs.
         # Wrap entire source batch in try/except to guarantee INGEST SourceRun row (v1.0)
         try:
             for raw_item in source_items:
@@ -260,12 +263,8 @@ def main(
                     source_errors += 1
                     stats["errors"] += 1
             
-            # Source batch completed successfully
-            source_duration = time.monotonic() - source_start_time
-            
         except Exception as batch_error:
             # Source batch failed catastrophically (v1.0)
-            source_duration = time.monotonic() - source_start_time
             ingest_status = "FAILURE"
             error_msg = str(batch_error)
             # Truncate error to 1000 chars for database safety
@@ -276,10 +275,12 @@ def main(
             if fail_fast:
                 raise
         
+        # Calculate duration (always runs, regardless of try/except outcome)
+        source_duration = time.monotonic() - source_start_time
+        
         # Create INGEST phase SourceRun record for this source (v0.9, v1.0: guaranteed)
         # Always write INGEST run, even if source had 0 items or failed (v1.0)
         run_at_utc = datetime.now(timezone.utc).isoformat()
-        source_duration = time.monotonic() - source_start_time
         
         # Determine error message
         if ingest_status == "FAILURE":

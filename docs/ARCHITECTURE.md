@@ -80,6 +80,21 @@ External Sources → Fetch → Raw Items → Normalize → Suppression → Entit
 - Last error: Most recent error message and status code
 - Ingest summary: Items processed, suppressed, events created, alerts touched
 
+**INGEST SourceRun Status Semantics:**
+- **SUCCESS**: Batch completed without batch-level exception, regardless of item-level failures
+  - Item-level exceptions are tracked via `source_errors` counter but don't change batch status
+  - Example: 10 items processed, 2 failed → status=SUCCESS, items_processed=10, error="2 error(s) during processing"
+- **FAILURE**: Batch-level exception occurred (e.g., database connection lost, catastrophic error)
+  - Batch-level exceptions prevent the entire source batch from completing
+  - Example: Database connection lost mid-batch → status=FAILURE, error="Connection lost"
+- **Item-level failures**: Tracked via `source_errors` counter and error message, but don't change batch status
+  - Individual item processing failures are caught and logged, but processing continues
+  - Pipeline continues processing remaining items in the batch
+- **Guarantee**: One INGEST SourceRun row per source_id per run_group_id, even if:
+  - Source has zero items (status=SUCCESS, items_processed=0)
+  - All items fail to process (status=SUCCESS, items_processed=N, error="N error(s) during processing")
+  - Batch-level exception occurs (status=FAILURE, error=exception message, before fail_fast re-raise)
+
 ### 3. Run Status Evaluation (`sentinel/ops/run_status.py`) — v1.0
 
 **Purpose:** Self-evaluating runs with exit codes for automation and monitoring.

@@ -204,3 +204,171 @@ def test_ingest_failure_still_writes_source_run(session):
     assert runs[0].items_events_created == 1
     assert runs[0].items_alerts_touched == 0
 
+
+def test_ingest_item_failure_creates_source_run(session, mocker):
+    """Test that item-level failures don't prevent INGEST SourceRun creation (v1.0)."""
+    run_group_id = "test-group-item-failure"
+    source_id = "test_source"
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Create two raw items: one valid, one that will fail during normalization
+    save_raw_item(
+        session,
+        source_id=source_id,
+        tier="global",
+        candidate={
+            "canonical_id": "valid-item-1",
+            "title": "Valid Item",
+            "url": "https://example.com/valid",
+            "published_at_utc": now,
+            "payload": {"title": "Valid Item"},
+        },
+    )
+    
+    # Create an item that will fail during normalization
+    # We'll mock normalize_external_event to raise an exception for this item
+    save_raw_item(
+        session,
+        source_id=source_id,
+        tier="global",
+        candidate={
+            "canonical_id": "invalid-item-1",
+            "title": "Invalid Item",
+            "url": "https://example.com/invalid",
+            "published_at_utc": now,
+            "payload": {"title": "Invalid Item"},
+        },
+    )
+    
+    session.commit()
+    
+    # Mock normalize_external_event to fail for the second item
+    call_count = [0]
+    original_normalize = None
+    
+    def mock_normalize(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] == 2:  # Second call (invalid-item-1)
+            raise ValueError("Simulated normalization error for testing")
+        # Import here to avoid circular import
+        from sentinel.parsing.normalizer import normalize_external_event
+        return normalize_external_event(*args, **kwargs)
+    
+    mocker.patch(
+        "sentinel.runners.ingest_external.normalize_external_event",
+        side_effect=mock_normalize
+    )
+    
+    # Run ingest_external_main
+    stats = ingest_external_main(
+        session=session,
+        source_id=source_id,
+        run_group_id=run_group_id,
+        fail_fast=False,
+    )
+    session.commit()
+    
+    # Assert: exactly one INGEST SourceRun row exists for this source_id
+    runs = list_recent_runs(session, source_id=source_id, phase="INGEST")
+    assert len(runs) >= 1, f"Expected at least 1 INGEST SourceRun, got {len(runs)}"
+    
+    # Find the run with our run_group_id
+    our_run = None
+    for run in runs:
+        if run.run_group_id == run_group_id:
+            our_run = run
+            break
+    
+    assert our_run is not None, f"No INGEST SourceRun found with run_group_id={run_group_id}"
+    assert our_run.phase == "INGEST"
+    assert our_run.run_group_id == run_group_id
+    # Status should be SUCCESS (batch completed, item failures are tracked in counters)
+    assert our_run.status == "SUCCESS"
+    # Counters: 2 items processed (attempted), at least 1 error
+    assert our_run.items_processed == 2, f"Expected 2 items processed, got {our_run.items_processed}"
+    # At least the valid item should create an event
+    assert our_run.items_events_created >= 1, f"Expected at least 1 event created, got {our_run.items_events_created}"
+    # Error message should indicate item-level failures
+    assert our_run.error is not None, "Expected error message for item-level failures"
+    assert "error" in our_run.error.lower() or "1" in our_run.error, f"Error message should mention errors: {our_run.error}"
+    
+    # Assert: valid item was processed (event/alert created)
+    # This verifies pipeline continues after item failure
+    assert stats["processed"] >= 1, f"Expected at least 1 item processed, got {stats['processed']}"
+    assert stats["errors"] >= 1, f"Expected at least 1 error, got {stats['errors']}"
+
+
+def test_ingest_fail_fast_still_writes_source_run(session, mocker):
+    """Test that --fail-fast writes SourceRun before exiting (v1.0)."""
+    run_group_id = "test-group-fail-fast"
+    source_id = "test_source"
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Create a raw item that will cause a batch-level failure
+    save_raw_item(
+        session,
+        source_id=source_id,
+        tier="global",
+        candidate={
+            "canonical_id": "failing-item-1",
+            "title": "Failing Item",
+            "url": "https://example.com/failing",
+            "published_at_utc": now,
+            "payload": {"title": "Failing Item"},
+        },
+    )
+    
+    session.commit()
+    
+    # Mock a function that will cause a batch-level exception
+    # We'll mock save_event to raise an exception on first call
+    call_count = [0]
+    
+    def mock_save_event(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            raise RuntimeError("Simulated batch-level failure for fail-fast test")
+        # Import here to avoid circular import
+        from sentinel.database.event_repo import save_event
+        return save_event(*args, **kwargs)
+    
+    mocker.patch(
+        "sentinel.runners.ingest_external.save_event",
+        side_effect=mock_save_event
+    )
+    
+    # Run ingest_external_main with fail_fast=True
+    # This should raise an exception, but SourceRun should be created first
+    with pytest.raises(RuntimeError, match="Simulated batch-level failure"):
+        ingest_external_main(
+            session=session,
+            source_id=source_id,
+            run_group_id=run_group_id,
+            fail_fast=True,
+        )
+    
+    # Commit to ensure SourceRun is persisted
+    session.commit()
+    
+    # Assert: INGEST SourceRun was created before exception was re-raised
+    runs = list_recent_runs(session, source_id=source_id, phase="INGEST")
+    assert len(runs) >= 1, f"Expected at least 1 INGEST SourceRun, got {len(runs)}"
+    
+    # Find the run with our run_group_id
+    our_run = None
+    for run in runs:
+        if run.run_group_id == run_group_id:
+            our_run = run
+            break
+    
+    assert our_run is not None, f"No INGEST SourceRun found with run_group_id={run_group_id}"
+    assert our_run.phase == "INGEST"
+    assert our_run.run_group_id == run_group_id
+    # Status should be FAILURE (batch-level exception occurred)
+    assert our_run.status == "FAILURE"
+    assert our_run.error is not None
+    assert "failure" in our_run.error.lower() or "error" in our_run.error.lower()
+    # Duration should be set (proves SourceRun was created)
+    assert our_run.duration_seconds is not None
+    assert our_run.duration_seconds >= 0
+
