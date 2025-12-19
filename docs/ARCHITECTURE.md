@@ -304,7 +304,8 @@ External Sources → Fetch → Raw Items → Normalize → Suppression → Entit
   - Generates alerts with trust tier weighting (v0.7)
   - Handles correlation and updates
   - Creates INGEST SourceRun records per source (v0.9)
-  - Guarantees SourceRun creation even on failure (v1.0)
+  - Attempts SourceRun creation even on failure (v1.0)
+  - **Persistence caveat**: If DB commit fails after SourceRun creation, the run record may not be persisted. We attempt exactly once; if commit fails, run tracking may be incomplete. This is acceptable for personal use but may require fallback logging for production.
 
 **Key Design:**
 - Each runner is a standalone `main()` function

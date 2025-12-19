@@ -263,7 +263,7 @@ Sentinel will be considered v1.0 when:
 ## Future Considerations
 
 - **v0.6**: External event retrieval (JSON ingestor, RSS monitoring)
-- **v1.0**: Stable API, complete documentation, production-ready
+- **v1.0**: Stable API, complete documentation, production-shaped for personal use
 - **v1.1+**: LLM agent for alert generation (optional enhancement)
 - **v2.0**: Multi-domain support with pluggable domain packs
 

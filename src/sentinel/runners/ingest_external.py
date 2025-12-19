@@ -159,8 +159,14 @@ def main(
         source_run_written = False  # Track if SourceRun was created in except block
         
         # Contract: One INGEST SourceRun per source_id per run_group_id, regardless of item failures.
-        # Batch exceptions recorded as FAILURE status. Item-level exceptions increment source_errors
-        # but don't change batch status unless all items fail or batch-level exception occurs.
+        # 
+        # Status semantics:
+        # - SUCCESS = batch loop completed (even if some items errored)
+        # - FAILURE = batch-level exception prevented completion
+        # 
+        # Persistence caveat: If DB commit fails after SourceRun creation, the run record may not
+        # be persisted. We attempt exactly once; if commit fails, run tracking may be incomplete.
+        # This is acceptable for personal use but may require fallback logging for production.
         # Wrap entire source batch in try/except to guarantee INGEST SourceRun row (v1.0)
         try:
             # Preflight checks (provides stable seam for batch-level failure injection)
