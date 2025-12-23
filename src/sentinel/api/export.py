@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
+from ..utils.time import utc_now_z
 from .alerts_api import list_alerts
 from .brief_api import get_brief
 from .sources_api import get_sources_health, list_sources
@@ -40,7 +41,7 @@ def export_brief(
     # Wrap in export schema
     export_data = {
         "export_schema_version": "1",
-        "exported_at_utc": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        "exported_at_utc": utc_now_z(),
         "data": brief_data,
     }
     
@@ -92,7 +93,7 @@ def export_alerts(
     if format == "json":
         export_data = {
             "export_schema_version": "1",
-            "exported_at_utc": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+            "exported_at_utc": utc_now_z(),
             "data": [alert.model_dump() for alert in alerts],
         }
         output = json.dumps(export_data, indent=2, sort_keys=True)
@@ -199,7 +200,7 @@ def export_sources(
     
     export_data = {
         "export_schema_version": "1",
-        "exported_at_utc": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        "exported_at_utc": utc_now_z(),
         "data": sources_health,
     }
     

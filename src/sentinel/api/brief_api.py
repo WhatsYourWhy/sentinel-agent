@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..database.alert_repo import query_recent_alerts
 from ..database.raw_item_repo import query_suppressed_items
+from ..utils.time import utc_now_z
 
 if TYPE_CHECKING:
     from ..database.schema import Alert
@@ -209,7 +210,7 @@ def get_brief(
     # Return BriefReadModel v1
     return {
         "read_model_version": "brief.v1",
-        "generated_at_utc": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        "generated_at_utc": utc_now_z(),
         "window": {
             "since": f"{since_hours}h",
             "since_hours": since_hours,

@@ -65,6 +65,25 @@ def test_api_layer_has_no_sqlalchemy_imports():
                             continue
                     # Otherwise, it's a violation
                     violations.append(f"{api_file}: direct import from '{node.module}'")
+                
+                # Check for backdoor: from sentinel.database.schema (should only be in TYPE_CHECKING)
+                if node.module == "sentinel.database.schema":
+                    # Check if this import is inside a TYPE_CHECKING block by examining source context
+                    lines = source.split("\n")
+                    line_num = node.lineno - 1  # Convert to 0-based index
+                    # Look backwards for TYPE_CHECKING block
+                    in_type_checking = False
+                    for i in range(max(0, line_num - 10), line_num + 1):
+                        if "TYPE_CHECKING" in lines[i] and ("if TYPE_CHECKING:" in lines[i] or "if TYPE_CHECKING" in lines[i]):
+                            # Check if this import is indented under the TYPE_CHECKING block
+                            import_indent = len(lines[line_num]) - len(lines[line_num].lstrip())
+                            type_checking_indent = len(lines[i]) - len(lines[i].lstrip())
+                            if import_indent > type_checking_indent:
+                                in_type_checking = True
+                                break
+                    
+                    if not in_type_checking:
+                        violations.append(f"{api_file}:{node.lineno} imports from sentinel.database.schema outside TYPE_CHECKING block")
                 # Check imported names
                 if node.names:
                     for alias in node.names:
@@ -120,4 +139,22 @@ def test_api_layer_has_no_sqlalchemy_imports():
                         if stripped.count('"') >= 2 or stripped.count("'") >= 2:
                             continue
                     assert False, f"{api_file}:{i} has direct session.query/add/commit call (violates rule: API should only call repo functions)"
+                
+                # Check for .execute( pattern (another direct DB access pattern)
+                if ".execute(" in stripped:
+                    # Check if it's in a comment or string
+                    if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
+                        continue
+                    if '"' in stripped or "'" in stripped:
+                        if stripped.count('"') >= 2 or stripped.count("'") >= 2:
+                            continue
+                    assert False, f"{api_file}:{i} has direct .execute( call (violates rule: API should only call repo functions)"
+                
+                # Check for runtime sqlalchemy imports (not in TYPE_CHECKING)
+                if "from sqlalchemy" in stripped or "import sqlalchemy" in stripped:
+                    # Check if it's in a TYPE_CHECKING block
+                    if "TYPE_CHECKING" not in source[max(0, i-5):i+1]:  # Check context around this line
+                        if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
+                            continue
+                        assert False, f"{api_file}:{i} has runtime sqlalchemy import (violates rule: use TYPE_CHECKING for type hints only)"
 
