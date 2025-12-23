@@ -6,7 +6,11 @@ from pathlib import Path
 
 
 def test_api_layer_has_no_sqlalchemy_imports():
-    """Test that API layer files don't import SQLAlchemy directly."""
+    """Test that API layer files don't import SQLAlchemy directly.
+    
+    Note: TYPE_CHECKING imports are allowed (e.g., `if TYPE_CHECKING: from ..database.schema import Alert`).
+    These are only used for type hints and don't cause runtime SQLAlchemy imports.
+    """
     api_dir = Path("src/sentinel/api")
     
     # Files to check (exclude __init__.py and README.md)

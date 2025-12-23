@@ -6,13 +6,15 @@ All query logic lives here - output/daily_brief.py is renderer-only.
 
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from typing import TYPE_CHECKING, Dict
 
 from sqlalchemy.orm import Session
 
 from ..database.alert_repo import query_recent_alerts
 from ..database.raw_item_repo import query_suppressed_items
-from ..database.schema import Alert
+
+if TYPE_CHECKING:
+    from ..database.schema import Alert
 
 
 def _parse_since(since_str: str) -> int:
@@ -26,7 +28,7 @@ def _parse_since(since_str: str) -> int:
         raise ValueError(f"Invalid --since format: {since_str}. Use 24h, 72h, or 7d")
 
 
-def _infer_correlation_action(alert: Alert) -> str:
+def _infer_correlation_action(alert: "Alert") -> str:
     """Infer correlation action from alert status (fallback only).
     
     Prefer using alert.correlation_action if available, as it's a fact
@@ -38,7 +40,7 @@ def _infer_correlation_action(alert: Alert) -> str:
         return "CREATED"  # OPEN status means it was created
 
 
-def _load_scope(alert: Alert) -> Dict:
+def _load_scope(alert: "Alert") -> Dict:
     """Load scope from JSON or return empty dict."""
     if not alert.scope_json:
         return {
@@ -60,7 +62,7 @@ def _load_scope(alert: Alert) -> Dict:
         }
 
 
-def _alert_to_dict(alert: Alert) -> Dict:
+def _alert_to_dict(alert: "Alert") -> Dict:
     """Convert Alert row to dict for brief output (v0.7: includes tier and trust_tier)."""
     scope = _load_scope(alert)
     
@@ -102,17 +104,43 @@ def get_brief(
         limit: Maximum number of alerts per section
         
     Returns:
-        BriefReadModel v1 dict with required keys:
-        - read_model_version: "brief.v1"
-        - generated_at_utc: ISO 8601 UTC timestamp
-        - window: {since, since_hours}
-        - counts: {new, updated, impactful, relevant, interesting}
-        - tier_counts: {global, regional, local, unknown}
-        - top: List of top impactful alerts (max 2)
-        - updated: List of updated alerts (limited)
-        - created: List of created alerts (limited)
-        - suppressed: {count, by_rule, by_source}
-        - suppressed_legacy: {total_queried, limit_applied}
+        BriefReadModel v1 dict with structure:
+        {
+            "read_model_version": "brief.v1",
+            "generated_at_utc": "ISO 8601 UTC with Z suffix",
+            "window": {"since": "24h", "since_hours": 24},
+            "counts": {
+                "new": int,
+                "updated": int,
+                "impactful": int,
+                "relevant": int,
+                "interesting": int
+            },
+            "tier_counts": {
+                "global": int,
+                "regional": int,
+                "local": int,
+                "unknown": int
+            },
+            "top": [alert_dict, ...],  # Max 2, sorted by impact_score DESC
+            "updated": [alert_dict, ...],  # Limited by limit param, preserves repo order
+            "created": [alert_dict, ...],  # Limited by limit param, preserves repo order
+            "suppressed": {
+                "count": int,
+                "by_rule": [{"rule_id": str, "count": int}, ...],  # Top 5, sorted DESC
+                "by_source": [{"source_id": str, "count": int}, ...]  # Top 5, sorted DESC
+            },
+            "suppressed_legacy": {
+                "total_queried": int,
+                "limit_applied": int
+            },
+        }
+        
+    Note on ordering:
+    - Repo order is preserved for `created` and `updated` lists (repo sorts by classification DESC, impact_score DESC, etc.)
+    - Only `top` is re-sorted by impact_score DESC (intentional presentation shaping)
+    - `tier_counts` dict iteration order is stable (Python 3.7+ dict order is insertion-order)
+    - Suppression rollups are explicitly sorted before limiting to top 5
     """
     # Parse since string
     since_hours = _parse_since(since)
@@ -168,7 +196,7 @@ def get_brief(
         if item.source_id:
             suppressed_by_source[item.source_id] = suppressed_by_source.get(item.source_id, 0) + 1
     
-    # Sort and take top 5
+    # Sort and take top 5 (explicit sorting for deterministic JSON)
     suppressed_by_rule_list = [
         {"rule_id": rule_id, "count": count}
         for rule_id, count in sorted(suppressed_by_rule.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -181,7 +209,7 @@ def get_brief(
     # Return BriefReadModel v1
     return {
         "read_model_version": "brief.v1",
-        "generated_at_utc": datetime.now(timezone.utc).isoformat() + "Z",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "window": {
             "since": f"{since_hours}h",
             "since_hours": since_hours,

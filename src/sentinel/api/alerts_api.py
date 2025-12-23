@@ -1,7 +1,7 @@
 """Alerts API: canonical query surface for alert data."""
 
 import json
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -14,11 +14,13 @@ from ..alerts.alert_models import (
     SentinelAlert,
 )
 from ..database.alert_repo import load_root_event_ids, query_recent_alerts
-from ..database.schema import Alert
 from .models import AlertDetailDTO, AlertProvenance
 
+if TYPE_CHECKING:
+    from ..database.schema import Alert
 
-def _alert_row_to_sentinel_alert(alert_row: Alert) -> SentinelAlert:
+
+def _alert_row_to_sentinel_alert(alert_row: "Alert") -> SentinelAlert:
     """Convert Alert ORM row to SentinelAlert Pydantic model."""
     # Load scope from JSON
     scope_dict = {}

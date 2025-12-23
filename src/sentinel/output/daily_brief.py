@@ -46,6 +46,7 @@ def render_markdown(brief_data: Dict) -> str:
     
     # Header
     # Support both old format (since) and new format (window.since)
+    # TODO(v1.2): Remove legacy dict support (since key). Use window.since only.
     if "window" in brief_data:
         since_str = brief_data["window"]["since"]
     else:

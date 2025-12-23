@@ -91,3 +91,87 @@ def test_get_brief_is_stable_sort_order(session):
     assert brief1["updated"] == brief2["updated"], "Updated alerts ordering should be stable"
     assert brief1["created"] == brief2["created"], "Created alerts ordering should be stable"
 
+
+def test_alert_reconstruction_round_trip(session):
+    """Test that alert reconstruction from DB preserves all required fields."""
+    from sentinel.api.alerts_api import list_alerts
+    from sentinel.database.alert_repo import upsert_new_alert_row
+    import json
+    
+    # Create alert row via repo
+    alert_id = "ALERT-TEST-ROUNDTRIP"
+    root_event_id = "EVT-TEST-001"
+    correlation_key = "test:correlation:key"
+    
+    scope_json = json.dumps({
+        "facilities": ["FAC-001", "FAC-002"],
+        "lanes": ["LANE-001"],
+        "shipments": ["SHIP-001"],
+        "shipments_total_linked": 1,
+        "shipments_truncated": False,
+    })
+    
+    alert_row = upsert_new_alert_row(
+            session,
+            alert_id=alert_id,
+            summary="Test alert for round-trip reconstruction",
+            risk_type="TEST",
+            classification=2,
+            status="OPEN",
+            reasoning="Test reasoning",
+            recommended_actions=json.dumps([{
+                "id": "ACT-001",
+                "description": "Test action",
+                "owner_role": "Operations",
+                "due_within_hours": 4
+            }]),
+            root_event_id=root_event_id,
+            correlation_key=correlation_key,
+            correlation_action="CREATED",
+            impact_score=8,
+            scope_json=scope_json,
+            tier="global",
+            source_id="test_source",
+            trust_tier=2,
+        )
+    session.commit()
+    
+    # Call api.list_alerts()
+    alerts = list_alerts(session, since=None, limit=100)
+    
+    # Find our test alert
+    test_alert = None
+    for alert in alerts:
+        if alert.alert_id == alert_id:
+            test_alert = alert
+            break
+    
+    assert test_alert is not None, "Test alert should be found in list_alerts()"
+    
+    # Assert required fields exist
+    assert test_alert.alert_id == alert_id
+    assert test_alert.classification == 2
+    assert test_alert.summary == "Test alert for round-trip reconstruction"
+    assert test_alert.risk_type == "TEST"
+    assert test_alert.root_event_id == root_event_id
+    assert test_alert.scope is not None
+    assert len(test_alert.scope.facilities) == 2
+    assert len(test_alert.scope.lanes) == 1
+    assert len(test_alert.scope.shipments) == 1
+    
+    # Assert new fields are present (via evidence.correlation)
+    assert test_alert.evidence is not None
+    assert test_alert.evidence.correlation is not None
+    assert test_alert.evidence.correlation["key"] == correlation_key
+    assert test_alert.evidence.correlation["action"] == "CREATED"
+    assert test_alert.evidence.correlation["alert_id"] == alert_id
+    
+    # Assert impact_score is in diagnostics
+    assert test_alert.evidence.diagnostics is not None
+    assert test_alert.evidence.diagnostics.impact_score == 8
+    
+    # Note: tier, trust_tier, source_id, update_count, first_seen_utc, last_seen_utc
+    # are stored in Alert ORM row but not yet in SentinelAlert model.
+    # They are accessible via get_alert_detail() which queries the row directly.
+    # This test verifies the core reconstruction works.
+

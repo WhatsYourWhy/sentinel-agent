@@ -40,7 +40,7 @@ def export_brief(
     # Wrap in export schema
     export_data = {
         "export_schema_version": "1",
-        "exported_at_utc": datetime.now(timezone.utc).isoformat() + "Z",
+        "exported_at_utc": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "data": brief_data,
     }
     
@@ -92,7 +92,7 @@ def export_alerts(
     if format == "json":
         export_data = {
             "export_schema_version": "1",
-            "exported_at_utc": datetime.now(timezone.utc).isoformat() + "Z",
+            "exported_at_utc": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             "data": [alert.model_dump() for alert in alerts],
         }
         output = json.dumps(export_data, indent=2, sort_keys=True)
@@ -199,7 +199,7 @@ def export_sources(
     
     export_data = {
         "export_schema_version": "1",
-        "exported_at_utc": datetime.now(timezone.utc).isoformat() + "Z",
+        "exported_at_utc": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "data": sources_health,
     }
     
