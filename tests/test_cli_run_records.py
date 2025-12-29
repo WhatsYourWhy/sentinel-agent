@@ -1,4 +1,5 @@
 import argparse
+import copy
 import json
 from contextlib import contextmanager
 from pathlib import Path
@@ -34,7 +35,7 @@ def _load_validated_record(records_dir: Path) -> dict:
 
 @contextmanager
 def _fake_session_context(_path):
-    session = SimpleNamespace(new=set(), commit=lambda: None, rollback=lambda: None)
+    session = SimpleNamespace(new=set(), commit=lambda: None, rollback=lambda: None, flush=lambda: None)
     yield session
 
 
@@ -52,10 +53,42 @@ def _stub_noops(monkeypatch):
     monkeypatch.setattr(cli, "ensure_suppression_columns", lambda *_, **__: None)
 
 
+def _stub_summaries(monkeypatch):
+    fetch_summary = {
+        "runs": [
+            {
+                "source_id": "source-1",
+                "status": "SUCCESS",
+                "status_code": 200,
+                "items_fetched": 2,
+                "items_new": 2,
+            }
+        ],
+        "totals": {"sources": 1, "fetched": 2, "stored": 2},
+    }
+    ingest_summary = {
+        "runs": [
+            {
+                "source_id": "source-1",
+                "status": "SUCCESS",
+                "items_processed": 2,
+                "items_events_created": 1,
+                "items_alerts_touched": 1,
+                "items_suppressed": 0,
+                "errors": 0,
+            }
+        ],
+        "totals": {"processed": 2, "events": 1, "alerts": 1, "suppressed": 0, "errors": 0},
+    }
+    monkeypatch.setattr(cli, "_summarize_fetch_runs", lambda *_, **__: copy.deepcopy(fetch_summary))
+    monkeypatch.setattr(cli, "_summarize_ingest_runs", lambda *_, **__: copy.deepcopy(ingest_summary))
+
+
 def test_cmd_fetch_emits_run_record_success(monkeypatch, tmp_path):
     records_dir = _instrument_run_record(tmp_path, monkeypatch)
     _stub_config(monkeypatch, tmp_path)
     _stub_noops(monkeypatch)
+    _stub_summaries(monkeypatch)
     monkeypatch.setattr(cli, "session_context", _fake_session_context)
     monkeypatch.setattr(cli, "get_all_sources", lambda _cfg: [{"id": "source-1", "tier": "global", "enabled": True}])
     monkeypatch.setattr(cli, "load_sources_config", lambda: {"sources": []})
@@ -102,6 +135,7 @@ def test_cmd_fetch_emits_run_record_on_failure(monkeypatch, tmp_path):
     records_dir = _instrument_run_record(tmp_path, monkeypatch)
     _stub_config(monkeypatch, tmp_path)
     _stub_noops(monkeypatch)
+    _stub_summaries(monkeypatch)
     monkeypatch.setattr(cli, "session_context", _fake_session_context)
 
     class _FailingFetcher:
@@ -133,6 +167,7 @@ def test_cmd_ingest_emits_run_record_success(monkeypatch, tmp_path):
     records_dir = _instrument_run_record(tmp_path, monkeypatch)
     _stub_config(monkeypatch, tmp_path)
     _stub_noops(monkeypatch)
+    _stub_summaries(monkeypatch)
     monkeypatch.setattr(cli, "session_context", _fake_session_context)
     monkeypatch.setattr(cli, "ingest_external_main", lambda **__: {
         "processed": 2,
@@ -164,6 +199,7 @@ def test_cmd_ingest_emits_run_record_on_failure(monkeypatch, tmp_path):
     records_dir = _instrument_run_record(tmp_path, monkeypatch)
     _stub_config(monkeypatch, tmp_path)
     _stub_noops(monkeypatch)
+    _stub_summaries(monkeypatch)
     monkeypatch.setattr(cli, "session_context", _fake_session_context)
 
     def _fail_ingest(**_kwargs):
@@ -189,10 +225,48 @@ def test_cmd_ingest_emits_run_record_on_failure(monkeypatch, tmp_path):
     assert data["errors"]
 
 
+def test_cmd_ingest_strict_aborts_on_errors(monkeypatch, tmp_path):
+    records_dir = _instrument_run_record(tmp_path, monkeypatch)
+    _stub_config(monkeypatch, tmp_path)
+    _stub_noops(monkeypatch)
+    _stub_summaries(monkeypatch)
+    monkeypatch.setattr(cli, "session_context", _fake_session_context)
+    monkeypatch.setattr(
+        cli,
+        "ingest_external_main",
+        lambda **__: {
+            "processed": 2,
+            "events": 1,
+            "alerts": 1,
+            "errors": 1,
+            "suppressed": 0,
+        },
+    )
+
+    args = argparse.Namespace(
+        limit=5,
+        min_tier=None,
+        source_id=None,
+        since=None,
+        no_suppress=False,
+        explain_suppress=False,
+        fail_fast=False,
+        strict=True,
+    )
+
+    with pytest.raises(cli.StrictModeViolation):
+        cli.cmd_ingest_external(args, run_group_id="group-ingest-strict")
+
+    data = _load_validated_record(records_dir)
+    assert data["mode"] == "strict"
+    assert data["errors"]
+    assert data["output_refs"] == []
+
 def test_cmd_brief_emits_run_record_success(monkeypatch, tmp_path):
     records_dir = _instrument_run_record(tmp_path, monkeypatch)
     _stub_config(monkeypatch, tmp_path)
     _stub_noops(monkeypatch)
+    _stub_summaries(monkeypatch)
     monkeypatch.setattr(cli, "session_context", _fake_session_context)
     monkeypatch.setattr(cli, "generate_brief", lambda *_, **__: {"alerts": []})
     monkeypatch.setattr(cli, "render_markdown", lambda *_: "brief-md")
@@ -217,6 +291,7 @@ def test_cmd_brief_emits_run_record_on_failure(monkeypatch, tmp_path):
     records_dir = _instrument_run_record(tmp_path, monkeypatch)
     _stub_config(monkeypatch, tmp_path)
     _stub_noops(monkeypatch)
+    _stub_summaries(monkeypatch)
     monkeypatch.setattr(cli, "session_context", _fake_session_context)
 
     def _fail_brief(*_args, **_kwargs):

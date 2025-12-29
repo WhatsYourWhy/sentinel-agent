@@ -12,6 +12,7 @@
     "started_at",
     "ended_at",
     "config_hash",
+    "artifact_digest",
     "input_refs",
     "output_refs"
   ],
@@ -48,6 +49,11 @@
       "type": "string",
       "pattern": "^[A-Fa-f0-9]{64}$",
       "description": "SHA-256 of the fully-resolved operator configuration."
+    },
+    "artifact_digest": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "SHA-256 digest of normalized output_refs payload."
     },
     "input_refs": {
       "type": "array",

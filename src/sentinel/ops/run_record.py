@@ -27,6 +27,13 @@ def _prune_none(value: Any) -> Any:
     return value
 
 
+def _compute_artifact_digest(refs: Iterable[ArtifactRef]) -> str:
+    """Return SHA-256 digest of normalized artifact refs."""
+    normalized = [_prune_none(asdict(ref)) for ref in refs]
+    payload = _canonical_dumps(normalized).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def fingerprint_config(snapshot: Optional[Dict[str, Any]]) -> str:
     """Return SHA-256 fingerprint for provided config snapshot."""
     snapshot = snapshot or {}
@@ -76,6 +83,7 @@ class RunRecord:
     started_at: str
     ended_at: str
     config_hash: str
+    artifact_digest: str
     input_refs: List[ArtifactRef] = field(default_factory=list)
     output_refs: List[ArtifactRef] = field(default_factory=list)
     warnings: List[Diagnostic] = field(default_factory=list)
@@ -103,6 +111,8 @@ def emit_run_record(
     started_at = started_at or utc_now_z()
     ended_at = ended_at or utc_now_z()
     config_hash = fingerprint_config(config_snapshot)
+    output_refs_list = list(output_refs or [])
+    artifact_digest = _compute_artifact_digest(output_refs_list)
     record = RunRecord(
         run_id=str(uuid.uuid4()),
         operator_id=operator_id,
@@ -110,8 +120,9 @@ def emit_run_record(
         started_at=started_at,
         ended_at=ended_at,
         config_hash=config_hash,
+        artifact_digest=artifact_digest,
         input_refs=list(input_refs or []),
-        output_refs=list(output_refs or []),
+        output_refs=output_refs_list,
         warnings=list(warnings or []),
         errors=list(errors or []),
         cost=cost or {},

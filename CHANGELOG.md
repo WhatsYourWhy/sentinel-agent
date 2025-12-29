@@ -19,12 +19,17 @@
 - Database diagnostics
   - `source_runs.diagnostics_json` stores fetch/ingest envelopes (bytes, dedupe, suppression reasons)
   - Raw items/events include `suppression_reason_code` for trend queries
+- Deterministic RunRecords
+  - RunRecord schema adds `artifact_digest` plus canonical artifact hashing
+  - CLI operators hash actual payloads (raw-item batches, SourceRuns, briefs) instead of run_group ids
 
 ### Changed
 - `cmd_fetch`/`cmd_sources_test` persist fetch diagnostics (bytes downloaded, dedupe counts)
 - `ingest_external` aggregates suppression reason counts per SourceRun
 - `evaluate_run_status` treats failure-budget blockers as exit code 2 and warnings in strict mode
 - Doctor command now reports failure-budget warnings/blockers alongside stale counts
+- Fetch/Ingest/Brief commands accept `--strict`
+- `sentinel ingest-external --strict` aborts with exit code 2 on non-fatal ingest errors and rolls back writes
 
 ### Technical
 - New helper `sentinel.ops.source_health.compute_health_score`

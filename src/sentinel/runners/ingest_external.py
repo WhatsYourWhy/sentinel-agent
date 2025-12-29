@@ -70,6 +70,7 @@ def main(
     explain_suppress: bool = False,
     run_group_id: Optional[str] = None,
     fail_fast: bool = False,
+    autocommit: bool = True,
 ) -> Dict[str, int]:
     """
     Main ingestion runner for external raw items.
@@ -147,6 +148,13 @@ def main(
         "suppressed": 0,  # v0.8: suppressed count
     }
     
+    def _commit_session() -> None:
+        """Commit or flush based on autocommit setting."""
+        if autocommit:
+            session.commit()
+        else:
+            session.flush()
+
     # Process each source group
     for source_id, source_items in items_by_source.items():
         # Per-source counters (v0.9)
@@ -198,7 +206,7 @@ def main(
                 session.rollback()
             else:
                 try:
-                    session.commit()
+                    _commit_session()
                 except Exception:
                     session.rollback()
                     raise
@@ -288,7 +296,7 @@ def main(
                                 suppressed_at_utc=suppressed_at_utc,
                                 suppression_reason_code=suppression_result.primary_reason_code,
                             )
-                            session.commit()
+                            _commit_session()
                             
                             source_suppressed += 1
                             source_events += 1  # Event is still created for audit
@@ -311,7 +319,7 @@ def main(
                     # Not suppressed - proceed with normal flow
                     # Persist event
                     save_event(session, event)
-                    session.commit()
+                    _commit_session()
                     source_events += 1
                     stats["events"] += 1
                     logger.debug(f"Created event {event['event_id']} from raw_item {raw_item.raw_id}")
@@ -327,7 +335,7 @@ def main(
                     
                     # Mark raw item as normalized
                     mark_raw_item_status(session, raw_item.raw_id, "NORMALIZED")
-                    session.commit()
+                    _commit_session()
                     
                     source_processed += 1
                     stats["processed"] += 1
@@ -338,7 +346,7 @@ def main(
                     try:
                         session.rollback()  # Rollback failed transaction
                         mark_raw_item_status(session, raw_item.raw_id, "FAILED", error=error_msg)
-                        session.commit()
+                        _commit_session()
                     except Exception as rollback_error:
                         logger.error(f"Failed to rollback and mark status: {rollback_error}")
                         session.rollback()

@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -57,3 +58,6 @@ def test_emit_run_record_matches_schema(tmp_path: Path):
     schema = json.loads(Path("docs/specs/run-record.schema.json").read_text(encoding="utf-8"))
     jsonschema.validate(instance=data, schema=schema)
     assert record.config_hash == fingerprint_config({"runtime": {"version": "1.0.0"}})
+    normalized_output = [{"hash": output_ref.hash, "id": output_ref.id, "kind": output_ref.kind}]
+    expected_digest = hashlib.sha256(json.dumps(normalized_output, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    assert data["artifact_digest"] == expected_digest

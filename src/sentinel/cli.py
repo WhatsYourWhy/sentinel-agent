@@ -2,12 +2,13 @@
 
 import argparse
 import hashlib
+import json
 import shutil
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -46,6 +47,79 @@ from sentinel.runners.run_demo import main as run_demo_main
 from sentinel.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+class StrictModeViolation(RuntimeError):
+    """Raised when strict-mode invariants fail."""
+
+
+def _canonical_hash(payload: Any) -> str:
+    """Canonical SHA-256 over a JSON-serializable payload."""
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _summarize_fetch_runs(session, run_group_id: str) -> Dict[str, Any]:
+    """Return deterministic summary for FETCH SourceRuns in a run group."""
+    runs = list_recent_runs(session, phase="FETCH", run_group_id=run_group_id, limit=1000)
+    runs_sorted = sorted(
+        runs,
+        key=lambda r: ((r.source_id or "").lower(), r.run_at_utc or ""),
+    )
+    summary_runs: List[Dict[str, Any]] = []
+    for run in runs_sorted:
+        summary_runs.append(
+            {
+                "source_id": run.source_id,
+                "status": run.status,
+                "status_code": run.status_code or 0,
+                "items_fetched": run.items_fetched or 0,
+                "items_new": run.items_new or 0,
+            }
+        )
+    totals = {
+        "sources": len(summary_runs),
+        "fetched": sum(item["items_fetched"] for item in summary_runs),
+        "stored": sum(item["items_new"] for item in summary_runs),
+    }
+    return {"runs": summary_runs, "totals": totals}
+
+
+def _summarize_ingest_runs(session, run_group_id: str) -> Dict[str, Any]:
+    """Return deterministic summary for INGEST SourceRuns in a run group."""
+    runs = list_recent_runs(session, phase="INGEST", run_group_id=run_group_id, limit=1000)
+    runs_sorted = sorted(
+        runs,
+        key=lambda r: ((r.source_id or "").lower(), r.run_at_utc or ""),
+    )
+    summary_runs: List[Dict[str, Any]] = []
+    totals = {"processed": 0, "events": 0, "alerts": 0, "suppressed": 0, "errors": 0}
+    for run in runs_sorted:
+        diagnostics: Dict[str, Any] = {}
+        diag_payload = getattr(run, "diagnostics_json", None)
+        if diag_payload:
+            try:
+                diagnostics = json.loads(diag_payload)
+            except (TypeError, json.JSONDecodeError):
+                diagnostics = {}
+        errors = int(diagnostics.get("errors", 0) or 0)
+        summary_runs.append(
+            {
+                "source_id": run.source_id,
+                "status": run.status,
+                "items_processed": run.items_processed or 0,
+                "items_events_created": run.items_events_created or 0,
+                "items_alerts_touched": run.items_alerts_touched or 0,
+                "items_suppressed": run.items_suppressed or 0,
+                "errors": errors,
+            }
+        )
+        totals["processed"] += summary_runs[-1]["items_processed"]
+        totals["events"] += summary_runs[-1]["items_events_created"]
+        totals["alerts"] += summary_runs[-1]["items_alerts_touched"]
+        totals["suppressed"] += summary_runs[-1]["items_suppressed"]
+        totals["errors"] += errors
+    return {"runs": summary_runs, "totals": totals}
 
 
 def _hash_parts(*parts: str) -> str:
@@ -350,6 +424,8 @@ def cmd_fetch(args: argparse.Namespace, run_group_id: Optional[str] = None) -> N
     mode = "strict" if getattr(args, "strict", False) else "best-effort"
     output_refs: List[ArtifactRef] = []
     errors: List[Diagnostic] = []
+    raw_items_hash: Optional[str] = None
+    source_runs_hash: Optional[str] = None
     
     # Generate run_group_id if not provided
     if run_group_id is None:
@@ -409,7 +485,8 @@ def cmd_fetch(args: argparse.Namespace, run_group_id: Optional[str] = None) -> N
             print(f"Would fetch from {len(filtered)} sources:")
             for source in filtered:
                 print(f"  - {source['id']} ({source.get('tier', 'unknown')} tier)")
-            source_runs_hash = _hash_parts(run_group_id, "dry-run", str(len(filtered)))
+            dry_payload = {"mode": "dry-run", "sources": len(filtered)}
+            source_runs_hash = _canonical_hash(dry_payload)
             output_refs = [
                 ArtifactRef(
                     id=f"source-runs:fetch:{run_group_id}",
@@ -494,22 +571,15 @@ def cmd_fetch(args: argparse.Namespace, run_group_id: Optional[str] = None) -> N
                 
                 session.commit()
             
+            fetch_summary = _summarize_fetch_runs(session, run_group_id)
+            raw_items_hash = _canonical_hash(fetch_summary["totals"])
+            source_runs_hash = _canonical_hash(fetch_summary["runs"])
             print(f"Fetch complete: {total_fetched} items fetched, {total_stored} stored")
-            batch_hash = _hash_parts(run_group_id, str(total_fetched), str(total_stored))
-            source_runs_hash = _hash_parts(
-                run_group_id,
-                *(
-                    sorted(
-                        f"{result.source_id}:{result.status}:{result.status_code or 0}"
-                        for result in results
-                    )
-                    or ["none"]
-                ),
-            )
+        if not args.dry_run and raw_items_hash and source_runs_hash:
             output_refs = [
                 ArtifactRef(
                     id=f"raw-items:{run_group_id}",
-                    hash=batch_hash,
+                    hash=raw_items_hash,
                     kind="RawItemBatch",
                 ),
                 ArtifactRef(
@@ -518,7 +588,6 @@ def cmd_fetch(args: argparse.Namespace, run_group_id: Optional[str] = None) -> N
                     kind="SourceRun",
                 ),
             ]
-        
     except Exception as e:
         logger.error(f"Error fetching: {e}", exc_info=True)
         errors.append(Diagnostic(code="FETCH_ERROR", message=str(e)))
@@ -545,7 +614,8 @@ def cmd_ingest_external(args: argparse.Namespace, run_group_id: Optional[str] = 
     sqlite_path = config.get("storage", {}).get("sqlite_path", "sentinel.db")
     config_snapshot = resolve_config_snapshot()
     started_at = datetime.now(timezone.utc).isoformat()
-    mode = "strict" if getattr(args, "strict", False) else "best-effort"
+    strict_mode = getattr(args, "strict", False)
+    mode = "strict" if strict_mode else "best-effort"
     errors: List[Diagnostic] = []
     output_refs: List[ArtifactRef] = []
     
@@ -556,10 +626,12 @@ def cmd_ingest_external(args: argparse.Namespace, run_group_id: Optional[str] = 
         _run_group_ref(run_group_id),
         ArtifactRef(
             id=f"raw-items:{run_group_id}",
-            hash=_hash_parts(run_group_id, str(args.source_id or "all"), str(args.limit or "all")),
+            hash="0" * 64,
             kind="RawItemBatch",
         ),
     ]
+    raw_batch_ref = input_refs[1]
+    ingest_summary: Optional[Dict[str, Any]] = None
     
     # Ensure migrations
     ensure_raw_items_table(sqlite_path)
@@ -582,6 +654,8 @@ def cmd_ingest_external(args: argparse.Namespace, run_group_id: Optional[str] = 
     
     try:
         with session_context(sqlite_path) as session:
+            fetch_summary = _summarize_fetch_runs(session, run_group_id)
+            raw_batch_ref.hash = _canonical_hash(fetch_summary)
             stats = ingest_external_main(
                 session=session,
                 limit=args.limit,
@@ -592,6 +666,7 @@ def cmd_ingest_external(args: argparse.Namespace, run_group_id: Optional[str] = 
                 explain_suppress=getattr(args, 'explain_suppress', False),
                 run_group_id=run_group_id,
                 fail_fast=getattr(args, 'fail_fast', False),
+                autocommit=not strict_mode,
             )
             
             print(f"Ingestion complete:")
@@ -601,20 +676,26 @@ def cmd_ingest_external(args: argparse.Namespace, run_group_id: Optional[str] = 
             if stats.get('suppressed', 0) > 0:
                 print(f"  Suppressed: {stats['suppressed']}")
             print(f"  Errors: {stats['errors']}")
-        ingest_hash = _hash_parts(
-            run_group_id,
-            str(stats.get("processed", 0)),
-            str(stats.get("events", 0)),
-            str(stats.get("alerts", 0)),
-            str(stats.get("errors", 0)),
-        )
-        output_refs = [
-            ArtifactRef(
-                id=f"source-runs:ingest:{run_group_id}",
-                hash=ingest_hash,
-                kind="SourceRun",
-            )
-        ]
+            
+            ingest_summary = _summarize_ingest_runs(session, run_group_id)
+
+            if strict_mode:
+                if stats.get("errors", 0) > 0:
+                    violation_msg = f"Strict mode aborted: ingest recorded {stats['errors']} error(s)"
+                    session.rollback()
+                    errors.append(Diagnostic(code="STRICT_MODE_ABORT", message=violation_msg))
+                    ingest_summary = None
+                    raise StrictModeViolation(violation_msg)
+                session.commit()
+        if ingest_summary:
+            ingest_hash = _canonical_hash(ingest_summary)
+            output_refs = [
+                ArtifactRef(
+                    id=f"source-runs:ingest:{run_group_id}",
+                    hash=ingest_hash,
+                    kind="SourceRun",
+                )
+            ]
     
     except Exception as e:
         logger.error(f"Error ingesting: {e}", exc_info=True)
@@ -1484,10 +1565,11 @@ def cmd_brief(args: argparse.Namespace, run_group_id: Optional[str] = None) -> N
         _run_group_ref(run_group_id),
         ArtifactRef(
             id=f"source-runs:ingest:{run_group_id}",
-            hash=_hash_parts(run_group_id),
+            hash="0" * 64,
             kind="SourceRun",
         ),
     ]
+    ingest_input_ref = input_refs[1]
     rendered_output = ""
     output_format = args.format or "md"
     
@@ -1516,6 +1598,8 @@ def cmd_brief(args: argparse.Namespace, run_group_id: Optional[str] = None) -> N
         # Generate brief
         try:
             with session_context(sqlite_path) as session:
+                ingest_summary = _summarize_ingest_runs(session, run_group_id)
+                ingest_input_ref.hash = _canonical_hash(ingest_summary)
                 brief_data = generate_brief(
                     session,
                     since_hours=since_hours,
@@ -1535,10 +1619,11 @@ def cmd_brief(args: argparse.Namespace, run_group_id: Optional[str] = None) -> N
         else:
             rendered_output = render_markdown(brief_data)
         print(rendered_output)
+        brief_hash = hashlib.sha256(rendered_output.encode("utf-8")).hexdigest()
         output_refs = [
             ArtifactRef(
                 id=f"brief:{run_group_id}",
-                hash=_hash_parts(rendered_output, run_group_id, output_format),
+                hash=brief_hash,
                 kind="Brief",
                 bytes=len(rendered_output.encode("utf-8")),
                 schema=f"brief::{output_format}",
@@ -1671,6 +1756,11 @@ def main() -> None:
         action="store_true",
         help="Stop on first error (default: continue on errors)",
     )
+    fetch_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat warnings as broken (exit 2 on issues)",
+    )
     fetch_parser.set_defaults(func=cmd_fetch)
     
     # ingest external command (separate from regular ingest)
@@ -1711,6 +1801,11 @@ def main() -> None:
         "--fail-fast",
         action="store_true",
         help="Stop processing on first source failure (v1.0)",
+    )
+    ingest_external_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat ingest warnings/errors as fatal (exit 2, rollback)",
     )
     ingest_external_parser.set_defaults(func=cmd_ingest_external)
     
@@ -1775,6 +1870,11 @@ def main() -> None:
         "--include-class0",
         action="store_true",
         help="Include classification 0 (Interesting) alerts",
+    )
+    brief_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat warnings as broken when generating brief",
     )
     brief_parser.set_defaults(func=cmd_brief)
     
@@ -1908,6 +2008,9 @@ def main() -> None:
     
     try:
         args.func(args)
+    except StrictModeViolation as exc:
+        logger.error(f"Strict-mode violation in command '{args.command}': {exc}", exc_info=False)
+        sys.exit(2)
     except Exception as e:
         logger.error(f"Error running command '{args.command}': {e}", exc_info=True)
         raise
