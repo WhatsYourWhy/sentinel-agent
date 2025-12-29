@@ -212,14 +212,29 @@ Tests for adapters/operators should run in strict mode with pinned dependencies 
 
 ---
 
-## Near-Term Roadmap (Architecture-Aligned)
+## Architecture-Aligned Execution Roadmap
 
-- **v0.1 (Kernel hardening)**  
-  Complete fingerprinting + RunRecord coverage, strict mode enforcement, bounded-processing knobs documented, golden-run fixtures.
-- **v0.2 (Operator catalog + portability)**  
-  Richer incident correlation evidence, export/import artifact bundles, optional OpenLineage mapping.
-- **v0.3 (Advisory AI operator, optional)**  
-  AI operator annotates artifacts but cannot affect scores unless gated by deterministic policies.
+The execution priorities are described in detail in
+[`docs/EXECUTION_PLAN.md`](EXECUTION_PLAN.md). Each priority band maps directly
+to architectural dependencies:
+
+- **P0 – Deterministic kernel hardening**  
+  Close RunRecord coverage gaps, fingerprint merged configs, enforce
+  strict/best-effort modes, and ship golden-run fixtures so every operator is
+  replayable.
+- **P1 – Source reliability & health**  
+  Normalize source schemas, expose tier-aware health scores, surface suppression
+  analytics, and make `sentinel doctor` block downstream phases when sources are
+  unhealthy.
+- **P2 – Decision core & artifact quality**  
+  Refactor canonicalization, capture scoring rationale, persist correlation
+  evidence, and add an incident replay CLI to validate provenance.
+- **P3 – Reporting & integrations**  
+  Upgrade briefs/exports to the new artifact schema, publish read-only bundles,
+  and wire deterministic run outputs into Slack/Linear/CI sinks.
+
+Revisit the roadmap alongside the execution plan every release cycle; updates
+must land in README, this document, and the execution plan simultaneously.
 
 ---
 

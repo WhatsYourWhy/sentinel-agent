@@ -288,6 +288,28 @@ Layers used in practice:
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full runtime specification and operator taxonomy, and refer to [docs/specs/run-record.schema.json](docs/specs/run-record.schema.json) for the RunRecord contract used by every operator execution.
 
+## Execution Plan
+
+We translate the architecture above into a prioritized execution plan so every
+change lands in the right order and keeps documentation in sync. The detailed
+plan lives in [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md); the high-level
+bands are:
+
+1. **P0 – Deterministic kernel hardening:** finish RunRecord coverage, config
+   fingerprinting, strict/best-effort enforcement, and golden-run fixtures so
+   every operator remains replayable.
+2. **P1 – Source reliability & health:** revamp the source registry, enhance
+   health scoring and suppression observability, and wire failure budgets into
+   `sentinel sources health` + `sentinel doctor`.
+3. **P2 – Decision core & artifact quality:** refactor canonicalization,
+   improve impact scoring explanations, add correlation evidence, and ship an
+   incident replay CLI.
+4. **P3 – Reporting & integrations:** deliver the next-generation briefs,
+   export bundles, and read-only Slack/Linear sinks plus CI-ready run signals.
+
+Each release should confirm which priority band is active and update this file,
+`docs/ARCHITECTURE.md`, and the execution plan together.
+
 ## Requirements
 
 - Python 3.8+
