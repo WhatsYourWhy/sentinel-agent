@@ -6,6 +6,7 @@ import jsonschema
 from sentinel.ops.run_record import (
     ArtifactRef,
     Diagnostic,
+    canonicalize_time_factory,
     emit_run_record,
     fingerprint_config,
 )
@@ -57,3 +58,42 @@ def test_emit_run_record_matches_schema(tmp_path: Path):
     schema = json.loads(Path("docs/specs/run-record.schema.json").read_text(encoding="utf-8"))
     jsonschema.validate(instance=data, schema=schema)
     assert record.config_hash == fingerprint_config({"runtime": {"version": "1.0.0"}})
+
+
+def test_emit_run_record_replay_mode_fixed_identifiers(tmp_path: Path):
+    fixed_run_id = "11111111-1111-1111-1111-111111111111"
+    canonicalize_time = canonicalize_time_factory(precision=0)
+    input_ref = ArtifactRef(
+        id="run-group-fixed",
+        hash="c55a2811006f7c3725b0416330d9a261528560aab54d4f23e97114fead92d9f0",
+        kind="RunGroup",
+    )
+    output_ref = ArtifactRef(
+        id="brief:fixed",
+        hash="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        kind="Brief",
+    )
+    started_at = "2024-01-01T00:00:00.123456Z"
+    ended_at = "2024-01-01T00:05:00.987654Z"
+    record = emit_run_record(
+        operator_id="sentinel.brief@1.0.0",
+        mode="strict",
+        run_id=fixed_run_id,
+        started_at=started_at,
+        ended_at=ended_at,
+        canonicalize_time=canonicalize_time,
+        config_snapshot={"runtime": {"version": "1.2.3"}, "sources": {"a": 1}},
+        input_refs=[input_ref],
+        output_refs=[output_ref],
+        filename_basename="replay_run",
+        dest_dir=tmp_path,
+    )
+
+    target = tmp_path / "replay_run.json"
+    assert target.exists()
+    data = json.loads(target.read_text(encoding="utf-8"))
+    assert data["run_id"] == fixed_run_id
+    assert data["started_at"] == "2024-01-01T00:00:00Z"
+    assert data["ended_at"] == "2024-01-01T00:05:00Z"
+    assert data["output_refs"][0]["hash"] == output_ref.hash
+    assert record.config_hash == fingerprint_config({"runtime": {"version": "1.2.3"}, "sources": {"a": 1}})
