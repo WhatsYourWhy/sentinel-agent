@@ -44,6 +44,26 @@ def test_broken_zero_sources():
     assert any("no enabled" in msg.lower() or "zero" in msg.lower() for msg in messages)
 
 
+def test_fetch_result_items_default_is_independent():
+    """Ensure each FetchResult gets its own empty items list."""
+    result1 = FetchResult(
+        source_id="source1",
+        fetched_at_utc=datetime.now(timezone.utc).isoformat(),
+        status="SUCCESS",
+    )
+    result2 = FetchResult(
+        source_id="source2",
+        fetched_at_utc=datetime.now(timezone.utc).isoformat(),
+        status="SUCCESS",
+    )
+
+    result1.items.append(
+        RawItemCandidate(canonical_id="id1", title="Item 1", payload={"id": "id1"})
+    )
+
+    assert result2.items == []
+
+
 def test_broken_all_sources_failed():
     """Test that all sources failing fetch results in exit code 2."""
     fetch_results = [
@@ -265,4 +285,3 @@ def test_strict_mode_warnings_become_broken():
     )
     assert exit_code == 2  # Warnings become broken in strict mode
     assert any("failed" in msg.lower() for msg in messages)
-
