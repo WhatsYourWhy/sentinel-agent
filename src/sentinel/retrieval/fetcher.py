@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from sentinel.config.loader import get_all_sources, load_sources_config
 from sentinel.retrieval.adapters import RawItemCandidate, create_adapter
@@ -25,7 +25,7 @@ class FetchResult(BaseModel):
     status_code: Optional[int] = None
     error: Optional[str] = None
     duration_seconds: Optional[float] = None
-    items: List[RawItemCandidate] = []
+    items: List[RawItemCandidate] = Field(default_factory=list)
 
 
 class SourceFetcher:
@@ -334,4 +334,3 @@ class SourceFetcher:
             duration_seconds=duration_seconds,
             items=candidates,
         )
-
