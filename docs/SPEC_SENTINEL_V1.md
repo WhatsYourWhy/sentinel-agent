@@ -267,3 +267,20 @@ Sentinel will be considered v1.0 when:
 - **v1.1+**: LLM agent for alert generation (optional enhancement)
 - **v2.0**: Multi-domain support with pluggable domain packs
 
+## Alignment with Execution Plan
+
+The v1 scope ties directly to the execution priorities defined in
+[`docs/EXECUTION_PLAN.md`](EXECUTION_PLAN.md):
+
+- **P0** items (RunRecord coverage, deterministic fixtures) are hard
+  prerequisites for declaring v1 readiness because they guarantee replayability.
+- **P1** work (source health + suppression analytics) feeds the CLI health gates
+  described earlier in this spec.
+- **P2** improvements (canonicalization v2, impact scoring rationale, correlation
+  evidence) ensure the Event and Alert schemas above stay stable.
+- **P3** integrations (brief v2, export bundles) map to the CLI surface area and
+  keep the CLI commands in this spec aligned with the actual artifact contracts.
+
+As phases complete, update this specification alongside the execution plan to
+capture any schema or CLI adjustments.
+
