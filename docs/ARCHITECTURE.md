@@ -114,6 +114,7 @@ The RunRecord is the backbone for replay, audit, and billing-like accounting.
 
 Implementation note: `sentinel.ops.run_record` contains the canonical emitter. CLI surfaces such as `sentinel run` persist RunRecords under `run_records/`, ensuring every execution captures the config fingerprint and run-status diagnostics.
 Fetch (`sentinel fetch`), ingest (`sentinel ingest-external`), and brief (`sentinel brief`) now emit per-operator RunRecords keyed by a shared `run_group_id`, threading raw-item batches, `SourceRun` rows, and brief artifacts through explicit input/output refs for provenance.
+Deterministic and replayed runs can provide fixed `run_id`, `started_at`, and `ended_at` values plus a `canonicalize_time` helper to normalize timestamps (e.g., round to whole seconds). File names can be pinned via `filename_basename` to avoid timestamp drift in golden fixtures. Best-effort (nondeterministic) runs must populate `best_effort` metadata to explain entropy sources and enable repeatability notes.
 
 ---
 

@@ -4,8 +4,9 @@ import hashlib
 import json
 import uuid
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from sentinel.config.loader import (
     load_config,
@@ -84,13 +85,60 @@ class RunRecord:
     best_effort: Dict[str, Any] = field(default_factory=dict)
 
 
+TimeCanonicalizer = Callable[[str], str]
+
+
+def _apply_canonicalize_time(timestamp: str, canonicalize_time: Optional[TimeCanonicalizer]) -> str:
+    if canonicalize_time:
+        return canonicalize_time(timestamp)
+    return timestamp
+
+
+def canonicalize_time_factory(
+    *,
+    fixed_value: Optional[str] = None,
+    precision: Optional[int] = None,
+) -> TimeCanonicalizer:
+    """
+    Build a simple timestamp normalizer for deterministic runs.
+
+    Args:
+        fixed_value: If provided, always return this value (ignores input).
+        precision: Number of microsecond digits to keep (0 = seconds). Values outside
+            0-6 are ignored.
+
+    Returns:
+        Callable that normalizes ISO8601 timestamps.
+    """
+
+    def _canonicalize(timestamp: str) -> str:
+        if fixed_value is not None:
+            return fixed_value
+        if precision is None:
+            return timestamp
+        if not (0 <= precision <= 6):
+            return timestamp
+        try:
+            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return timestamp
+        micro_factor = 10 ** (6 - precision)
+        truncated_micro = (dt.microsecond // micro_factor) * micro_factor
+        dt = dt.replace(microsecond=truncated_micro, tzinfo=dt.tzinfo or timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    return _canonicalize
+
+
 def emit_run_record(
     operator_id: str,
     *,
     mode: str,
+    run_id: Optional[str] = None,
     config_snapshot: Optional[Dict[str, Any]] = None,
     started_at: Optional[str] = None,
     ended_at: Optional[str] = None,
+    canonicalize_time: Optional[TimeCanonicalizer] = None,
     input_refs: Optional[Iterable[ArtifactRef]] = None,
     output_refs: Optional[Iterable[ArtifactRef]] = None,
     warnings: Optional[Iterable[Diagnostic]] = None,
@@ -98,13 +146,14 @@ def emit_run_record(
     cost: Optional[Dict[str, int]] = None,
     best_effort: Optional[Dict[str, Any]] = None,
     dest_dir: Path | str = Path("run_records"),
+    filename_basename: Optional[str] = None,
 ) -> RunRecord:
     """Create and persist a RunRecord JSON document."""
-    started_at = started_at or utc_now_z()
-    ended_at = ended_at or utc_now_z()
+    started_at = _apply_canonicalize_time(started_at or utc_now_z(), canonicalize_time)
+    ended_at = _apply_canonicalize_time(ended_at or utc_now_z(), canonicalize_time)
     config_hash = fingerprint_config(config_snapshot)
     record = RunRecord(
-        run_id=str(uuid.uuid4()),
+        run_id=run_id or str(uuid.uuid4()),
         operator_id=operator_id,
         mode=mode,
         started_at=started_at,
@@ -119,7 +168,11 @@ def emit_run_record(
     )
     output_dir = Path(dest_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{record.started_at.replace(':', '').replace('-', '').replace('T', '_')}_{record.run_id}.json"
+    filename = (
+        f"{filename_basename}.json"
+        if filename_basename
+        else f"{record.started_at.replace(':', '').replace('-', '').replace('T', '_')}_{record.run_id}.json"
+    )
     target_path = output_dir / filename
     with target_path.open("w", encoding="utf-8") as fh:
         json.dump(_prune_none(asdict(record)), fh, indent=2, sort_keys=True)
@@ -133,4 +186,6 @@ __all__ = [
     "emit_run_record",
     "fingerprint_config",
     "resolve_config_snapshot",
+    "canonicalize_time_factory",
+    "TimeCanonicalizer",
 ]

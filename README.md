@@ -343,6 +343,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full runtime specificat
 
 Running `sentinel run` now emits a RunRecord JSON document under `run_records/`. Each record includes the merged configuration fingerprint, execution mode (strict vs best-effort), hashed references to the run group id, and the resolved run-status diagnostics. The schema matches `docs/specs/run-record.schema.json`, so you can validate or replay runs in downstream tooling by pointing a JSON Schema validator at the generated files.
 
+For deterministic or replayed runs, you can supply your own `run_id`, `started_at`, and `ended_at` values plus an optional `canonicalize_time` helper to round timestamps (e.g., strip microseconds) or pin them to test fixtures. When you need stable filenames (CI snapshots), pass `filename_basename` to `emit_run_record` so the record does not embed wall-clock timestamps. If an operator uses nondeterministic inputs, populate `best_effort` metadata (seed, model version, notes) so replays document the entropy sources.
+
 ## Execution Plan
 
 We translate the architecture above into a prioritized execution plan so every
