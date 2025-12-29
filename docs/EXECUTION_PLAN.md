@@ -52,6 +52,29 @@ foundational dependencies to user-facing integrations.
 - **Operational ergonomics**: align CLI exit codes, `sentinel doctor`, and
   run-status footer so we can rely on them in CI/CD integrations later.
 
+#### P0 Verification (Dec 2025)
+
+- `python3 -m pytest` passes (103 tests as of Dec 2025). `tests/test_run_record.py`,
+  `tests/test_run_status.py`, and `tests/test_golden_run.py` lock the RunRecord schema,
+  the resolved merged-config fingerprint hash (canonical JSON serialization of the
+  post-default snapshot), the strict vs best-effort exit-code matrix, and the golden
+  fixture digests (with nondeterministic fields such as timestamps/paths normalized
+  out of the hashed payloads) that guard determinism.
+- `sentinel run` emits RunRecords with merged config fingerprints and mode metadata
+  through the `sentinel.ops.run_record` helpers, and the CLI footer mirrors the exit-code
+  decisions validated in the tests above.
+- `sentinel doctor` exercises the same schema- and config-validation paths that drive
+  RunRecord diagnostics, so CI or local operators get identical guidance before
+  progressing to P1 workstreams.
+- Given identical inputs, resolved configs, and strict mode, rerunning `sentinel run`
+  produces identical RunRecord hashes plus unchanged golden artifact digests.
+
+**P0 invariants**
+- Every operator emits/finalizes a RunRecord for each execution.
+- Config fingerprint hashes remain stable for identical resolved (post-default) snapshots.
+- Strict vs best-effort exit codes and CLI footer messaging remain stable across runs.
+- Golden fixture digests remain stable because nondeterministic fields are normalized.
+
 ### P1 – Source Reliability & Health
 
 - **Source registry revamp**: move source definitions into a canonical schema
@@ -112,7 +135,8 @@ foundational dependencies to user-facing integrations.
 
 ## Current Status Snapshot (Dec 2025)
 
-- P0 tasks partially complete (RunRecord schema exists, needs full coverage).
+- P0 tasks complete and locked by regression tests (RunRecord schema + config
+  fingerprints, strict/best-effort exit codes, golden-run fixtures).
 - P1 groundwork in place via `sentinel sources health` but lacks suppression
   analytics and failure budgets.
 - P2 correlation evidence and replay tooling not yet implemented.
