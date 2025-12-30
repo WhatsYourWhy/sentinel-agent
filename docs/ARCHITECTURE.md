@@ -249,11 +249,13 @@ to architectural dependencies:
   and wire deterministic run outputs into Slack/Linear/CI sinks.
 
 Revisit the roadmap alongside the execution plan every release cycle; updates
-must land in README, this document, and the execution plan simultaneously.
+must land in README, this document, and the execution plan simultaneously. P0,
+P1, and P2 are delivered and regression-tested as of Jan 2026; P3 workstreams
+remain open.
 
-For contributor kickoff on P2 workstreams (canonicalization v2, impact scoring
-transparency, correlation evidence, replay CLI), see `docs/P2_READINESS.md` for
-current-state notes and acceptance criteria mapped to code paths.
+For historical mapping of the completed P2 workstreams (canonicalization v2,
+impact scoring transparency, correlation evidence, replay CLI) to code paths
+and acceptance tests, see `docs/P2_READINESS.md`.
 
 ---
 
