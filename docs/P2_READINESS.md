@@ -46,7 +46,7 @@ future extensions.
   facilities, correlation keys).
 - **Acceptance criteria:**
   - Introduce correlation evidence artifacts under `src/hardstop/output/incidents/`
-    that enumerate merge reasons and inputs.
+    that enumerate the merge reasons and inputs.
   - Briefs and export paths surface evidence summaries for analyst audit.
   - Tests validate evidence capture for overlapping events and for negative cases
     (no merge when evidence is insufficient) using deterministic fixtures in
