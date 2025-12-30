@@ -54,6 +54,37 @@ To mirror high-impact alerts into Linear:
    - Add facilities/lanes/shipments to the issue description for context.
 4) Run the bridge after each successful `hardstop run`.
 
+### Set Hardstop as the repo of record
+
+Linear’s GitHub integration and API both accept a repository hint so downstream
+automation knows where the issue originated. Make sure Hardstop is the default:
+
+1. **Connect the repo once:** Linear → Settings → Integrations → GitHub →
+   select the `hardstop` repository so link-backs resolve automatically.
+2. **Pass the repo in your bridge:** When you call the Linear GraphQL API,
+   include metadata so future tooling can filter issues:
+
+```
+{
+  "query": "mutation IssueCreate($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }",
+  "variables": {
+    "input": {
+      "teamId": "<team-id>",
+      "title": "[hardstop] {{ alert.title }}",
+      "description": "{{ alert.summary }}",
+      "metadata": {
+        "repo": "hardstop",
+        "source": "hardstop-brief"
+      }
+    }
+  }
+}
+```
+
+If you rely on Linear’s built-in GitHub sync, the metadata step is still useful
+because it stays visible even when a human edits the issue later—everything
+originating from Hardstop shares the same `repo: hardstop` tag.
+
 ## Quick checklist
 
 - [ ] Decide where alerts live (Slack channel, Linear team, GitHub PR comment, etc.).
