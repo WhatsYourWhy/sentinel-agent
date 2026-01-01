@@ -153,7 +153,12 @@ def _find_incident_artifacts(
 
 def cmd_demo(args: argparse.Namespace) -> None:
     """Run the demo pipeline."""
-    run_demo_main()
+    run_demo_main(
+        mode=getattr(args, "mode", "live"),
+        pinned_seed=getattr(args, "seed", None),
+        pinned_timestamp=getattr(args, "timestamp", None),
+        pinned_run_id=getattr(args, "run_id", None),
+    )
 
 
 def cmd_incidents_replay(args: argparse.Namespace) -> dict:
@@ -1873,6 +1878,25 @@ def main() -> None:
     
     # demo command
     demo_parser = subparsers.add_parser("demo", help="Run the demo pipeline")
+    demo_parser.add_argument(
+        "--mode",
+        choices=["live", "pinned"],
+        default="live",
+        help="Live mode preserves real-time IDs; pinned mode freezes run context for audits.",
+    )
+    demo_parser.add_argument(
+        "--timestamp",
+        help="Override pinned timestamp (ISO8601). Only used when --mode pinned.",
+    )
+    demo_parser.add_argument(
+        "--seed",
+        help="Override pinned UUID seed. Only used when --mode pinned.",
+    )
+    demo_parser.add_argument(
+        "--run-id",
+        dest="run_id",
+        help="Override pinned run identifier. Only used when --mode pinned.",
+    )
     demo_parser.set_defaults(func=cmd_demo)
 
     # incidents commands

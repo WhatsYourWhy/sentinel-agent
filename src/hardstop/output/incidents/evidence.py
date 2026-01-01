@@ -57,6 +57,8 @@ class IncidentEvidenceArtifact:
     scope: Dict[str, Dict[str, List[str]]] = field(default_factory=dict)
     window_hours: int = 0
     artifact_hash: Optional[str] = None
+    determinism_mode: str = "live"
+    determinism_context: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload = {
@@ -71,6 +73,9 @@ class IncidentEvidenceArtifact:
             "scope": self.scope,
             "window_hours": self.window_hours,
         }
+        payload["determinism_mode"] = self.determinism_mode
+        if self.determinism_context:
+            payload["determinism_context"] = self.determinism_context
         payload["artifact_hash"] = self.artifact_hash or artifact_hash(payload)
         return payload
 
@@ -157,6 +162,8 @@ def build_incident_evidence_artifact(
     dest_dir: str | Path = "output/incidents",
     generated_at: Optional[str] = None,
     filename_basename: Optional[str] = None,
+    determinism_mode: str = "live",
+    determinism_context: Optional[Dict[str, Any]] = None,
 ) -> Tuple[IncidentEvidenceArtifact, "ArtifactRef", Path]:
     """
     Build and persist an IncidentEvidence artifact.
@@ -223,6 +230,8 @@ def build_incident_evidence_artifact(
             "incoming": scope_incoming,
         },
         window_hours=window_hours,
+        determinism_mode=determinism_mode,
+        determinism_context=determinism_context,
     )
 
     payload = artifact.to_dict()

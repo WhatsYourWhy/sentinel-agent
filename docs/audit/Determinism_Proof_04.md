@@ -52,3 +52,28 @@ All other serialized fields (risk type, summary, recommended action) mirror the 
 ## Test Coverage
 
 `python3 -m pytest tests/test_demo_pipeline.py` passes, confirming the fixture-level demo pipeline contract is still satisfied.
+
+## Addendum (2026-01-01) — HS-AUDIT-04.5 pinned mode
+
+To make the demo pipeline reproducible for CI/audits we added a pinned determinism mode.  
+It freezes the timestamp + UUID seed used for alert IDs and incident artifact hashes, and records the context inside each artifact.
+
+### Procedure
+
+1. `python3 -m pip install -e ".[dev]"` (once per environment)
+2. `python3 -m hardstop.runners.load_network`
+3. Optionally reset the demo database if you need a clean `CREATED` correlation path:
+   - `rm -f hardstop.db output/incidents/*.json`
+4. `python3 -m hardstop.runners.run_demo --mode pinned`
+   - `hardstop demo --mode pinned` is equivalent
+
+### Expected pinned outputs
+
+- Alert ID: `ALERT-20251229-d31a370b`
+- Incident artifact hash: `e36dbe8cf992b8a2e49fb2eb3d867fe9a728517fcbe6bcc19d46e66875eaa2d6`
+- Artifact payload includes:
+  - `"determinism_mode": "pinned"`
+  - `"determinism_context": {"seed": "demo-pinned-seed.v1", "timestamp_utc": "2025-12-29T17:00:00Z", "run_id": "demo-golden-run.v1"}`
+
+Live mode (`python3 -m hardstop.runners.run_demo`) remains unchanged and continues to reflect current timestamps.  
+Pinned mode gives auditors an immutable reference trace while still allowing live smoke tests to observe correlation behavior.
