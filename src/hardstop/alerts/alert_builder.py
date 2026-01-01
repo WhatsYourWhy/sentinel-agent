@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -62,7 +63,14 @@ def _merge_scope(existing_scope_json: str | None, new_scope: Dict[str, object]) 
     return merged_scope
 
 
-def build_basic_alert(event: Dict, session: Optional[Session] = None) -> HardstopAlert:
+def build_basic_alert(
+    event: Dict,
+    session: Optional[Session] = None,
+    *,
+    determinism_mode: str = "live",
+    determinism_context: Optional[Dict[str, Any]] = None,
+    incident_dest_dir: str | Path = "output/incidents",
+) -> HardstopAlert:
     """
     Build a minimal alert for a single event.
     
@@ -297,9 +305,11 @@ def build_basic_alert(event: Dict, session: Optional[Session] = None) -> Hardsto
         correlation_key=correlation_key,
         existing_alert=existing_alert,
         window_hours=7 * 24,
-        dest_dir="output/incidents",
+        dest_dir=incident_dest_dir,
         generated_at=event.get("event_time_utc") or event.get("published_at_utc"),
         filename_basename=f"{alert_id}__{event.get('event_id', 'event')}__{correlation_key.replace('|', '_')}",
+        determinism_mode=determinism_mode,
+        determinism_context=determinism_context if determinism_mode == "pinned" else None,
     )
     if evidence is None:
         evidence = AlertEvidence()

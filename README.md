@@ -112,7 +112,11 @@ hardstop brief --today --since 24h
 
 ### Demo Pipeline (P0 verification)
 
-Use the baked-in demo workflow when you need a deterministic sanity check of the network linker + alert builder stack.
+Use the baked-in demo workflow when you need a sanity check of the network linker + alert builder stack.  
+There are now two determinism modes:
+
+- **live** (default): mirrors real runtime behavior. Alert IDs/timestamps drift with the wall clock, but classification, scope, and linkage invariants must match the README claims.
+- **pinned**: freezes timestamp + UUID seed so audits/CI can diff byte-for-byte outputs. Alert IDs, incident artifact hashes, and determinism metadata stay constant.
 
 ```bash
 # Install runtime + tests (once per environment)
@@ -120,24 +124,43 @@ python3 -m pip install -e ".[dev]"
 
 # Load the golden-path network data into SQLite (idempotent)
 python3 -m hardstop.runners.load_network
-
-# Execute the end-to-end demo pipeline (reads event fixture, links network, builds alert)
-python3 -m hardstop.runners.run_demo
 ```
 
-You should see a single alert emitted (currently `ALERT-20251229-bb25eb7a`) with:
+#### Pinned / golden run (stable alert + artifacts)
 
+```bash
+# Run via module or CLI flag (same behavior)
+python3 -m hardstop.runners.run_demo --mode pinned
+# or
+hardstop demo --mode pinned
+```
+
+Expected output (clean database):
+
+- Alert ID `ALERT-20251229-d31a370b`
 - classification `2` / impact score `5`
 - scope matching facility `PLANT-01`, lanes `LANE-001..003`, and six shipments
-- linking notes that walk through facility → lane → shipment matching and correlation key `SAFETY|PLANT-01|LANE-001`
+- incident evidence at `output/incidents/ALERT-20251229-d31a370b__EVT-DEMO-0001__SAFETY_PLANT-01_LANE-001.json`
+  - `determinism_mode: "pinned"`
+  - `determinism_context.seed`, `.timestamp_utc`, `.run_id` recorded
+  - artifact hash `e36dbe8cf992b8a2e49fb2eb3d867fe9a728517fcbe6bcc19d46e66875eaa2d6`
 
-For a lighter-weight regression, you can run just the fixture-based unit test:
+This is the value we compare during audits/CI runs.
+
+#### Live demo spot-check (IDs drift)
+
+```bash
+python3 -m hardstop.runners.run_demo          # or `hardstop demo`
+```
+
+Alert IDs will reflect today’s date and a new UUID suffix, and the second run will correlate to the first.  
+Classification, impact score, scope, and linking notes must still match the pinned run narrative above.
+
+For a lighter-weight regression (no SQLite needed), run the fixture-based unit test:
 
 ```bash
 python3 -m pytest tests/test_demo_pipeline.py
 ```
-
-Both commands are deterministic; if they diverge from the outputs above, capture the stdout and open an issue.
 
 ### Daily Workflow
 
