@@ -403,7 +403,6 @@ hardstop-agent/
 ├── README.md
 ├── CHANGELOG.md
 ├── pyproject.toml
-├── requirements.txt
 ├── config/
 │   ├── sources.yaml          # External source definitions
 │   ├── sources.example.yaml  # Example source config
@@ -422,6 +421,8 @@ hardstop-agent/
 │   └── runners/              # Executable workflows
 └── tests/                    # Test suite
 ```
+
+Dependency management lives in `pyproject.toml`; the project does not ship a `requirements.txt`.
 
 ## Contributing
 
