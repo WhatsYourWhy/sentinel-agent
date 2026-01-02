@@ -69,26 +69,47 @@ Use `--strict` flag to treat warnings as broken (exit code 2).
 
 ## Quick Start
 
-### Installation
+### Installation (reproducible and hashed)
 
 ```bash
-# Create virtual environment
+# 1. Create + activate a virtual environment
 python -m venv .venv
+source .venv/bin/activate              # Linux / macOS
+.\.venv\Scripts\Activate.ps1            # Windows PowerShell
 
-# Activate (Linux/Mac)
-source .venv/bin/activate
+# 2. Install the vetted, hashed dependency set
+pip install --require-hashes -r requirements.lock.txt
 
-# Activate (Windows PowerShell)
-# If you get an execution policy error, run this first:
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-
-# Install Hardstop
-pip install -e .
-
-# For contributors (includes pytest and dev tools):
-pip install -e ".[dev]"
+# 3. Expose Hardstop in editable mode (keeps local code changes live)
+pip install --no-deps -e .
 ```
+
+- `requirements.lock.txt` bundles runtime + dev extras (pytest, pip-tools, pip-audit, etc.) so every install resolves to the same wheels across machines.
+- After pulling new changes, re-sync with: `pip-sync requirements.lock.txt` (available because pip-tools is part of the lockset).
+- Need a smaller runtime-only environment? Install from the lockfile and skip the editable step, or create a second venv that only runs `pip install --require-hashes -r requirements.lock.txt`.
+- Windows PowerShell users may need `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` before running the activation script.
+
+#### Verify the environment
+
+```bash
+pip check
+pip-audit --progress-spinner off
+pytest
+```
+
+All three commands must pass inside the locked environment before shipping changes. `pip-audit` is now scoped to the repo-owned dependencies, so findings are actionable and reproducible.
+
+#### Updating dependencies (maintainers only)
+
+Hardstop uses `pip-tools` to compile the lockfile from `pyproject.toml`. To refresh pins:
+
+```bash
+pip install --upgrade pip-tools
+pip-compile --allow-unsafe --extra dev --generate-hashes \
+  --output-file requirements.lock.txt pyproject.toml
+```
+
+Commit the updated `requirements.lock.txt` alongside any intentional spec bumps in `pyproject.toml`, then rerun the verification commands above.
 
 ### First-Time Setup
 
@@ -120,7 +141,8 @@ There are now two determinism modes:
 
 ```bash
 # Install runtime + tests (once per environment)
-python3 -m pip install -e ".[dev]"
+pip install --require-hashes -r requirements.lock.txt
+pip install --no-deps -e .
 
 # Load the golden-path network data into SQLite (idempotent)
 python3 -m hardstop.runners.load_network
@@ -446,7 +468,7 @@ hardstop-agent/
 └── tests/                    # Test suite
 ```
 
-Dependency management lives in `pyproject.toml`; the project does not ship a `requirements.txt`.
+Dependency management lives in `pyproject.toml`, with a hashed `requirements.lock.txt` generated via `pip-compile` to guarantee reproducible installs.
 
 ## Contributing
 
