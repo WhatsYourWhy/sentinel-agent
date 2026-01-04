@@ -4,6 +4,7 @@
 
 ## Table of Contents
 
+- [Quick Start TL;DR](#quick-start-tldr)
 - [What is Hardstop?](#what-is-hardstop)
 - [Connect your tools](#connect-your-tools)
 - [Status](#status)
@@ -26,6 +27,17 @@
 - [Contributing](#contributing)
 - [License](#license)
 - [Changelog](#changelog)
+
+## Quick Start TL;DR
+
+1. `python -m venv .venv && source .venv/bin/activate`
+2. `pip install --require-hashes -r requirements.lock.txt`
+3. `pip install --no-deps -e .`
+4. `hardstop init` to copy example configs safely
+5. Edit `config/sources.yaml` and `config/suppression.yaml`
+6. `hardstop doctor` to verify PATH, DB, and health checks
+7. `hardstop ingest` to seed facilities, lanes, and shipments
+8. `hardstop run --since 24h` then `hardstop brief --today --since 24h`
 
 ## What is Hardstop?
 
@@ -268,7 +280,6 @@ hardstop sources health --explain-suppress <source_id>
 # samples:
 #   RAW-123 -> RULE-001 ("test outage")
 #   RAW-129 -> RULE-007 ("facility=PLANT-99 outside scope")
-```
 ```
 
 ## Usage
